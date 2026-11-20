@@ -17,7 +17,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "lakehouse.duckdb"
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
-LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-4-argon")
+LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
