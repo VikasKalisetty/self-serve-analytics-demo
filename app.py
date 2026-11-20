@@ -79,11 +79,22 @@ def render_assistant_details(msg: dict):
             st.markdown(f"**Join Strategy:** {plan.get('join_strategy', 'N/A')}")
 
             retrieved = msg.get("retrieved", {})
+            kpi_match = retrieved.get("kpi_match", {})
+            if msg["context_on"] and not kpi_match.get("is_exact", False):
+                st.warning(
+                    "No exact KPI name/synonym match was found. Retrieved KPI documents "
+                    "were used as reference context, not as the selected KPI."
+                )
             if retrieved.get("kpis"):
                 st.divider()
-                st.markdown("**Retrieved Enterprise Context Docs (ChromaDB):**")
+                st.markdown("**KPI Context Selection:**")
                 for k in retrieved["kpis"]:
-                    st.markdown(f"- `{k['id']}` **{k['name']}** ({k['version']} · {k['owner']}) — similarity: `{k['similarity']}`")
+                    details = (
+                        "exact name/synonym match"
+                        if k.get("match_type") == "exact"
+                        else f"reference only; embedding similarity: `{k['similarity']}`"
+                    )
+                    st.markdown(f"- `{k['id']}` **{k['name']}** ({k['version']} · {k['owner']}) — {details}")
 
         with t2:
             for idx, step in enumerate(msg.get("cot", []), start=1):
@@ -183,6 +194,12 @@ if st.session_state.pending_grounding is not None:
 
     with st.chat_message("assistant"):
         st.info(f"### ✅ Grounding Verification ({mode_label})")
+        kpi_match = pending["bundle"]["retrieved"].get("kpi_match", {})
+        if pending["bundle"]["context_on"] and not kpi_match.get("is_exact", False):
+            st.warning(
+                "No exact KPI name/synonym match was found. The generated metric is "
+                "derived using related KPI documents as reference; review its definition and formula."
+            )
         st.markdown(f"**Metric:** `{plan['metric_name']}`")
         st.markdown(f"**Definition:** {plan['business_definition']}")
         st.markdown(f"**Formula:** `{plan['formula_summary']}`")

@@ -1,11 +1,13 @@
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 import chromadb
 import duckdb
 import pandas as pd
+import yaml
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from dotenv import load_dotenv
 from google import genai
@@ -18,6 +20,111 @@ BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "lakehouse.duckdb"
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+
+
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.casefold())
+
+
+def _kpi_label_variants(kpi: dict[str, Any]) -> list[tuple[str, list[str]]]:
+    name = kpi["name"]
+    labels = [
+        name,
+        re.sub(r"\([^)]*\)", "", name),
+        *kpi.get("synonyms", []),
+    ]
+    variants = []
+    seen = set()
+    for label in labels:
+        words = _tokens(label)
+        if words and words[-1] in {"rate", "metric", "kpi"}:
+            words = words[:-1]
+        normalized = tuple(words)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            variants.append((label, words))
+    return variants
+
+
+def find_exact_kpi_match(
+    question: str, kpi_definitions: list[dict[str, Any]]
+) -> tuple[dict[str, Any], str] | None:
+    question_tokens = _tokens(question)
+    matches = []
+    for kpi in kpi_definitions:
+        for label, label_tokens in _kpi_label_variants(kpi):
+            width = len(label_tokens)
+            if any(
+                question_tokens[index:index + width] == label_tokens
+                for index in range(len(question_tokens) - width + 1)
+            ):
+                matches.append((width, kpi, label))
+
+    if not matches:
+        return None
+
+    longest = max(width for width, _, _ in matches)
+    best_matches = [match for match in matches if match[0] == longest]
+    best_by_id = {match[1]["id"]: match for match in best_matches}
+    if len(best_by_id) != 1:
+        return None
+
+    _, kpi, label = next(iter(best_by_id.values()))
+    return kpi, label
+
+
+def _format_kpi_document(kpi: dict[str, Any]) -> str:
+    return (
+        f"KPI: {kpi['name']} ({kpi['id']})\n"
+        f"Synonyms: {', '.join(kpi.get('synonyms', []))}\n"
+        f"Definition: {kpi['business_definition'].strip()}\n"
+        f"Formula: {kpi['formula_logic'].strip()}\n"
+        f"Mandatory Filters: {', '.join(kpi.get('mandatory_filters', [])) or 'None'}\n"
+        f"Required Tables: {', '.join(kpi.get('required_tables', []))}\n"
+        f"Notes: {kpi.get('notes', '').strip()}"
+    )
+
+
+def _kpi_selection_instruction(question: str, retrieved: dict[str, Any]) -> str:
+    match = retrieved["kpi_match"]
+    if match["is_exact"]:
+        return (
+            f"An exact KPI name/synonym match was found: {match['matched_label']!r} "
+            f"for {match['matched_kpi_name']!r}. Use that KPI definition only; "
+            "do not replace it with a more semantically similar KPI."
+        )
+
+    instruction = (
+        "No KPI name or synonym exactly matches the requested metric. Treat every "
+        "embedding-retrieved KPI below as reference material only, not as the selected "
+        "KPI. Define the metric named in the user's question and carry over only the "
+        "parts of a reference definition that measure that requested metric. Do not "
+        "copy unrelated formula conditions just because they appear in a retrieved KPI."
+    )
+    question_tokens = _tokens(question)
+    asks_on_time_delivery = (
+        "otd" in question_tokens
+        or any(
+            question_tokens[index:index + 3] == ["on", "time", "delivery"]
+            for index in range(len(question_tokens) - 2)
+        )
+    )
+    has_otif_reference = any(
+        "otif" in _tokens(kpi["name"])
+        or any(
+            _tokens(kpi["name"])[index:index + 2] == ["in", "full"]
+            for index in range(len(_tokens(kpi["name"])) - 1)
+        )
+        for kpi in retrieved["kpis"]
+    )
+    if asks_on_time_delivery and has_otif_reference:
+        instruction += (
+            " For the requested On-Time Delivery metric derived from an OTIF reference, "
+            "use the reference's posted-receipt filter and days_early_late BETWEEN -3 "
+            "AND 3 timeliness condition, but omit is_complete_receipt and "
+            "rejected_quantity = 0 because those are In-Full/quality criteria."
+        )
+    return instruction
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
@@ -72,6 +179,9 @@ class AnalyticsEngine:
         self.chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         self.kpi_col = self.chroma_client.get_collection("enterprise_kpis", embedding_function=self.embed_fn)
         self.sem_col = self.chroma_client.get_collection("semantic_layer", embedding_function=self.embed_fn)
+        with (BASE_DIR / "context" / "kpi_definitions.yaml").open(encoding="utf-8") as file:
+            self.kpi_definitions = yaml.safe_load(file)["kpis"]
+        self.kpi_definitions_by_id = {kpi["id"]: kpi for kpi in self.kpi_definitions}
 
     def get_raw_schema(self) -> str:
         """Used when Enterprise Context is OFF: raw table & column names only, zero business rules."""
@@ -87,23 +197,52 @@ class AnalyticsEngine:
         return "\n".join(f"- {tbl}: {cols}" for tbl, cols in rows)
 
     def retrieve_context(self, question: str) -> dict[str, Any]:
-        """Retrieves Top-K KPIs, Semantic Layer tables/joins, and all Global Rules from ChromaDB."""
-        kpi_res = self.kpi_col.query(query_texts=[question], n_results=3)
+        """Uses exact KPI names first and semantic retrieval only for reference KPIs."""
+        exact_match = find_exact_kpi_match(question, self.kpi_definitions)
+        if exact_match:
+            matched_kpi, matched_label = exact_match
+            kpis = [{
+                "id": matched_kpi["id"],
+                "name": matched_kpi["name"],
+                "version": matched_kpi.get("version", ""),
+                "owner": matched_kpi.get("owner", ""),
+                "similarity": 1.0,
+                "match_type": "exact",
+                "content": _format_kpi_document(matched_kpi),
+            }]
+            kpi_match = {
+                "is_exact": True,
+                "matched_kpi_id": matched_kpi["id"],
+                "matched_kpi_name": matched_kpi["name"],
+                "matched_label": matched_label,
+            }
+        else:
+            kpi_res = self.kpi_col.query(query_texts=[question], n_results=3)
+            kpis = []
+            for doc_id, meta, dist in zip(
+                kpi_res["ids"][0], kpi_res["metadatas"][0], kpi_res["distances"][0]
+            ):
+                definition = self.kpi_definitions_by_id.get(doc_id)
+                if definition is None:
+                    continue
+                kpis.append({
+                    "id": doc_id,
+                    "name": definition["name"],
+                    "version": definition.get("version", ""),
+                    "owner": definition.get("owner", ""),
+                    "similarity": round(1 - dist, 3),
+                    "match_type": "reference",
+                    "content": _format_kpi_document(definition),
+                })
+            kpi_match = {
+                "is_exact": False,
+                "matched_kpi_id": "",
+                "matched_kpi_name": "",
+                "matched_label": "",
+            }
+
         sem_res = self.sem_col.query(query_texts=[question], n_results=7)
         rules_res = self.sem_col.get(ids=["RULE-001", "RULE-002", "RULE-003"])
-
-        kpis = []
-        for doc_id, doc, meta, dist in zip(
-            kpi_res["ids"][0], kpi_res["documents"][0], kpi_res["metadatas"][0], kpi_res["distances"][0]
-        ):
-            kpis.append({
-                "id": doc_id,
-                "name": meta.get("kpi_name", doc_id),
-                "version": meta.get("version", ""),
-                "owner": meta.get("owner", ""),
-                "similarity": round(1 - dist, 3),
-                "content": doc,
-            })
 
         sem_docs = []
         seen_ids = set()
@@ -127,7 +266,7 @@ class AnalyticsEngine:
                     "content": doc,
                 })
 
-        return {"kpis": kpis, "semantic": sem_docs}
+        return {"kpis": kpis, "semantic": sem_docs, "kpi_match": kpi_match}
 
     def create_grounding_plan(self, question: str, context_on: bool) -> dict[str, Any]:
         """Step 1 & 2: Retrieve context (if ON) and generate a structured Grounding Verification Plan."""
@@ -135,12 +274,17 @@ class AnalyticsEngine:
             retrieved = self.retrieve_context(question)
             kpi_block = "\n\n".join(k["content"] for k in retrieved["kpis"])
             sem_block = "\n\n".join(s["content"] for s in retrieved["semantic"])
+            kpi_selection = _kpi_selection_instruction(question, retrieved)
             prompt = f"""
 You are an Enterprise AI Analytics Architect.
 A user asked: "{question}"
 
-Use ONLY the governed Enterprise Context (KPI Definitions) and Semantic Layer below to plan the query.
+Use the KPI Selection Guardrail below to decide whether a retrieved KPI is an exact match or reference-only.
+Use the Semantic Layer for available tables, joins, and global rules.
 If the question asks about data that does not exist in this Procurement & Inventory lakehouse (e.g., HR headcount, CRM leads, social media), set is_answerable=False and explain politely.
+
+--- KPI SELECTION GUARDRAIL ---
+{kpi_selection}
 
 --- ENTERPRISE CONTEXT (KPI DEFINITIONS) ---
 {kpi_block}
@@ -148,10 +292,19 @@ If the question asks about data that does not exist in this Procurement & Invent
 --- SEMANTIC LAYER (TABLES, JOINS, GLOBAL RULES) ---
 {sem_block}
 
-Return a structured GroundingPlan specifying the exact governed definition, formula, mandatory filters, tables, and composite join strategy.
+If an exact KPI match exists, return its governed definition and formula. Otherwise, name and define the metric requested by the user, deriving only relevant logic from reference KPIs. Return its formula, mandatory filters, tables, and composite join strategy.
 """
         else:
-            retrieved = {"kpis": [], "semantic": []}
+            retrieved = {
+                "kpis": [],
+                "semantic": [],
+                "kpi_match": {
+                    "is_exact": False,
+                    "matched_kpi_id": "",
+                    "matched_kpi_name": "",
+                    "matched_label": "",
+                },
+            }
             raw_schema = self.get_raw_schema()
             prompt = f"""
 You are a basic SQL assistant without access to an Enterprise Context or Semantic Layer.
@@ -190,8 +343,12 @@ Otherwise, make your best ungrounded guess at the metric definition, formula, an
         if context_on:
             kpi_block = "\n\n".join(k["content"] for k in retrieved["kpis"])
             sem_block = "\n\n".join(s["content"] for s in retrieved["semantic"])
+            kpi_selection = _kpi_selection_instruction(question, retrieved)
             context_section = f"""
---- GOVERNED ENTERPRISE CONTEXT ---
+--- KPI SELECTION GUARDRAIL ---
+{kpi_selection}
+
+--- KPI CONTEXT (EXACT MATCH OR REFERENCE ONLY AS INDICATED ABOVE) ---
 {kpi_block}
 
 --- SEMANTIC LAYER ---
@@ -200,10 +357,17 @@ Otherwise, make your best ungrounded guess at the metric definition, formula, an
 --- CONFIRMED GROUNDING PLAN ---
 {json.dumps(plan, indent=2)}
 """
-            instruction = (
-                "Strictly enforce ALL mandatory filters, exact KPI formulas, and multi-company composite joins "
-                "(company = company) from the Enterprise Context and Confirmed Grounding Plan."
-            )
+            if retrieved["kpi_match"]["is_exact"]:
+                instruction = (
+                    "Enforce the exact-matched KPI's formula, mandatory filters, and multi-company "
+                    "composite joins (company = company) from the Confirmed Grounding Plan."
+                )
+            else:
+                instruction = (
+                    "Implement the requested derived metric from the Confirmed Grounding Plan. "
+                    "Treat retrieved KPI formulas as reference-only; do not apply unrelated conditions. "
+                    "Preserve multi-company composite joins (company = company) where applicable."
+                )
         else:
             context_section = f"""
 --- RAW DATABASE SCHEMA (NO ENTERPRISE CONTEXT) ---
