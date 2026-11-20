@@ -144,7 +144,7 @@ with st.sidebar:
     st.markdown(
         "1. **Lakehouse:** 9 Epicor Parquet tables in DuckDB\n"
         "2. **Context & Semantic Layer:** YAML KPIs + 10 composite joins in ChromaDB\n"
-        "3. **Agentic Text-to-SQL:** Gemini Grounding → CoT → Self-Healing SQL → Plotly"
+        "3. **Agentic Text-to-SQL:** Sarvam 105B Grounding → CoT → Self-Healing SQL → Plotly"
     )
 
     if st.button("🗑️ Clear Conversation", use_container_width=True):

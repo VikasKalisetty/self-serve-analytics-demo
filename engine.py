@@ -2,7 +2,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import chromadb
 import duckdb
@@ -11,15 +11,15 @@ import yaml
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
+from sarvamai import SarvamAI
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "lakehouse.duckdb"
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
-LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+SARVAM_MODEL = os.getenv("SARVAM_MODEL", "sarvam-105b")
 
 
 def _tokens(text: str) -> list[str]:
@@ -169,8 +169,16 @@ class VizAndSummary(BaseModel):
     chart_title: str = Field(default="", description="Clean title for the chart.")
 
 
+T = TypeVar("T", bound=BaseModel)
+
+
 class AnalyticsEngine:
     def __init__(self):
+        sarvam_api_key = os.getenv("SARVAM_API_KEY")
+        if not sarvam_api_key:
+            raise ValueError("SARVAM_API_KEY not found. Add it to your .env file.")
+        self.sarvam_client = SarvamAI(api_subscription_key=sarvam_api_key)
+
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found. Add it to your .env file.")
@@ -182,6 +190,34 @@ class AnalyticsEngine:
         with (BASE_DIR / "context" / "kpi_definitions.yaml").open(encoding="utf-8") as file:
             self.kpi_definitions = yaml.safe_load(file)["kpis"]
         self.kpi_definitions_by_id = {kpi["id"]: kpi for kpi in self.kpi_definitions}
+
+    def _generate_structured_response(
+        self, prompt: str, response_model: type[T], temperature: float
+    ) -> T:
+        schema = json.dumps(response_model.model_json_schema(), indent=2)
+        response = self.sarvam_client.chat.completions(
+            model=SARVAM_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Return exactly one valid JSON object that conforms to the JSON Schema "
+                        "provided in the user message. Do not include markdown or extra text."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"{prompt}\n\nRequired JSON Schema:\n{schema}",
+                },
+            ],
+            temperature=temperature,
+            reasoning_effort="low",
+            max_tokens=4096,
+        )
+        content = response.choices[0].message.content
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Sarvam returned an empty structured response.")
+        return response_model.model_validate_json(content)
 
     def get_raw_schema(self) -> str:
         """Used when Enterprise Context is OFF: raw table & column names only, zero business rules."""
@@ -317,16 +353,7 @@ If the question cannot be answered from these tables at all, set is_answerable=F
 Otherwise, make your best ungrounded guess at the metric definition, formula, and tables to use.
 """
 
-        resp = self.genai_client.models.generate_content(
-            model=LLM_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=GroundingPlan,
-                temperature=0.1,
-            ),
-        )
-        plan = GroundingPlan.model_validate_json(resp.text)
+        plan = self._generate_structured_response(prompt, GroundingPlan, temperature=0.1)
         return {
             "plan": plan.model_dump(),
             "retrieved": retrieved,
@@ -402,16 +429,9 @@ Instructions:
                 f"{base_prompt}\n\nPREVIOUS SQL FAILED WITH DUCKDB ERROR:\n"
                 f"SQL:\n{sql_query}\nError:\n{error_msg}\nFix the SQL and explain the fix in chain_of_thought."
             )
-            resp = self.genai_client.models.generate_content(
-                model=LLM_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=SQLGenerationResult,
-                    temperature=0.0,
-                ),
+            result = self._generate_structured_response(
+                prompt, SQLGenerationResult, temperature=0.0
             )
-            result = SQLGenerationResult.model_validate_json(resp.text)
             sql_query = result.sql.strip().rstrip(";")
             if attempt == 1:
                 cot_steps = result.chain_of_thought
@@ -454,16 +474,9 @@ Sample Data:
    - 'bar' if there is a categorical column + numeric column (2 to 20 rows)
    - 'table' otherwise
 """
-        viz_resp = self.genai_client.models.generate_content(
-            model=LLM_MODEL,
-            contents=viz_prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=VizAndSummary,
-                temperature=0.2,
-            ),
-        )
-        viz = VizAndSummary.model_validate_json(viz_resp.text).model_dump()
+        viz = self._generate_structured_response(
+            viz_prompt, VizAndSummary, temperature=0.2
+        ).model_dump()
 
         return {
             "success": True,
