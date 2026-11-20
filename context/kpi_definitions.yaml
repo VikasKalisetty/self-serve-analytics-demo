@@ -20,7 +20,7 @@ kpis:
 
   - id: KPI-002
     name: On-Time In-Full (OTIF) Rate
-    synonyms: ["OTIF", "supplier delivery performance", "on-time delivery", "perfect order rate"]
+    synonyms: ["OTIF", "supplier delivery performance", "perfect order rate"]
     business_definition: >
       Percentage of posted goods receipts that arrived within the acceptable delivery
       tolerance window of -3 days to +3 days from the due date (neither excessively early
