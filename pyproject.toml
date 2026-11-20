@@ -1,0 +1,26 @@
+[project]
+name = "self-serve-analytics-demo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.5.9",
+    "duckdb>=2.0.0",
+    "faker>=40.54.0",
+    "google-genai>=3.6.1",
+    "pandas>=3.1.1",
+    "plotly>=7.1.0",
+    "pyarrow>=26.0.1",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "streamlit>=1.67.0",
+    "tabulate>=0.10.0",
+]
+
+[project.scripts]
+self-serve-analytics-demo = "self_serve_analytics_demo:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"

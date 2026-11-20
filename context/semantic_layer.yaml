@@ -1,0 +1,173 @@
+global_rules:
+  - id: RULE-001
+    title: Multi-Company Composite Key Rule
+    description: >
+      The database contains multiple companies (COMP01, COMP02) with overlapping IDs
+      (po_number, vendor_num, part_num, employee_num, warehouse_code, bin_num).
+      EVERY join between any two tables MUST include company = company to prevent
+      Cartesian fan-out and double-counting.
+  - id: RULE-002
+    title: Periodic Inventory Snapshot Rule
+    description: >
+      fct_inventory_position stores monthly historical snapshots (snapshot_date).
+      For current inventory questions, ALWAYS filter to:
+      snapshot_date = (SELECT MAX(snapshot_date) FROM fct_inventory_position).
+      Only query multiple snapshot_dates when the user explicitly asks for a trend over time.
+  - id: RULE-003
+    title: DuckDB SQL Dialect
+    description: >
+      Generate valid DuckDB SQL. Use NULLIF(denom, 0) for all divisions to prevent
+      divide-by-zero errors.
+
+tables:
+  - name: fct_purchase_orders
+    type: fact
+    grain: "One row per PO release (company + po_number + po_line + po_release_number)"
+    description: "Captures purchase order details at the release level including ordered, received, and open quantities, unit price, extended price, and lateness flags."
+    key_columns:
+      - "company, po_number, po_line, po_release_number (Composite PK)"
+      - "vendor_num, part_num, buyer_id (FKs)"
+      - "order_date, due_date, supplier_confirmed_date, promised_date, need_by_date"
+      - "order_quantity, received_quantity, open_quantity, unit_price, extended_price"
+      - "release_status, po_status, is_open, is_closed, is_confirmed, is_late"
+      - "days_to_due_date, days_past_due, lead_time_days"
+
+  - name: fct_po_receipts
+    type: fact
+    grain: "One row per goods receipt packing slip line (company + pack_slip + pack_line)"
+    description: "Captures actual goods receipt transactions against POs, including accepted/rejected quantities, inspection outcomes, and early/late delivery days."
+    key_columns:
+      - "company, pack_slip, pack_line (Composite PK)"
+      - "po_number, po_line, po_release_number, vendor_num, part_num, warehouse_code, bin_num (FKs)"
+      - "receipt_date, arrival_date, received_quantity, accepted_quantity, rejected_quantity"
+      - "unit_cost, extended_cost, receipt_status"
+      - "is_complete_receipt, is_partial_receipt, is_returned, days_early_late, inspection_required, inspection_status"
+
+  - name: fct_inventory_position
+    type: fact
+    grain: "Periodic monthly snapshot per company + part_num + warehouse_code + bin_num + snapshot_date"
+    description: "Captures physical on-hand, available, allocated, reserved, inspection, hold, and in-transit inventory quantities, valuation, thresholds, and stock_status."
+    key_columns:
+      - "company, part_num, warehouse_code, bin_num, snapshot_date (Composite PK)"
+      - "on_hand_quantity, available_quantity, allocated_quantity, reserved_quantity, non_nettable_quantity, inspection_quantity, hold_quantity, in_transit_quantity"
+      - "inventory_value, average_unit_cost, days_of_inventory"
+      - "minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
+      - "stock_status (Overstock/Normal/Understock/Stockout), is_below_minimum, is_above_maximum"
+
+  - name: dim_po
+    type: dimension
+    grain: "One row per PO header (company + po_number)"
+    description: "Descriptive purchase order header attributes including PO type, payment/freight terms, shipping method, approval status, and buyer group."
+    key_columns:
+      - "company, po_number (Composite PK)"
+      - "vendor_num, buyer_id, order_date, po_status, po_type, terms_code, ship_via_code, freight_terms"
+      - "approval_status, approved_by, approval_date, is_approved, is_open, is_closed, is_blanket_order, buyer_group"
+
+  - name: dim_employee
+    type: dimension
+    grain: "One row per employee (company + employee_num)"
+    description: "Employee master data for buyers, approvers, warehouse managers, and inventory specialists."
+    key_columns:
+      - "company, employee_num (Composite PK)"
+      - "employee_name, job_title, department, division, location, manager_id, manager_name"
+      - "is_buyer, is_inventory_worker, is_warehouse_manager, is_approver"
+
+  - name: dim_warehousebin
+    type: dimension
+    grain: "One row per warehouse bin (company + warehouse_code + bin_num)"
+    description: "Warehouse and bin attributes including warehouse type, location, bin zone, storage capacity, and nettable/receiving/shipping flags."
+    key_columns:
+      - "company, warehouse_code, bin_num (Composite PK)"
+      - "warehouse_name, warehouse_type, warehouse_city, warehouse_state"
+      - "bin_name, bin_type, bin_zone, max_capacity, current_capacity, available_capacity"
+      - "is_active, is_nettable, is_receiving_bin, is_shipping_bin, is_default_bin"
+
+  - name: dim_vendor
+    type: dimension
+    grain: "One row per vendor (company + vendor_num)"
+    description: "Supplier master data including vendor name, category, tier (Strategic/Preferred/Transactional), risk category, rating, and default lead time."
+    key_columns:
+      - "company, vendor_num (Composite PK)"
+      - "vendor_name, vendor_type, vendor_category, vendor_status, supplier_tier"
+      - "is_preferred_supplier, is_strategic_supplier, is_approved_supplier"
+      - "payment_terms, lead_time_days, supplier_rating, supplier_risk_category"
+
+  - name: dim_part
+    type: dimension
+    grain: "One row per part (company + part_num)"
+    description: "Part and material master data including description, class, category, product group, standard/average cost, ABC classification, and criticality."
+    key_columns:
+      - "company, part_num (Composite PK)"
+      - "part_description, part_type, part_class, part_category, product_group, product_family"
+      - "standard_cost, average_cost, minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
+      - "abc_classification, criticality, default_lead_time_days"
+
+  - name: dim_supplier_price_list
+    type: dimension
+    grain: "One row per company + part_num + vendor_num"
+    description: "Supplier-specific contracted pricing, MOQ/order multiples, quoted lead times, price breaks, and primary/preferred supplier flags."
+    key_columns:
+      - "company, part_num, vendor_num (Composite PK)"
+      - "quoted_unit_price, minimum_price, maximum_price, discount_percentage, price_break_quantity"
+      - "standard_lead_time_days, minimum_order_quantity, is_preferred_supplier, is_primary_supplier"
+
+joins:
+  - id: JOIN-01
+    left_table: fct_purchase_orders
+    right_table: dim_vendor
+    join_condition: "fct_purchase_orders.company = dim_vendor.company AND fct_purchase_orders.vendor_num = dim_vendor.vendor_num"
+    usage: "Enrich purchase orders with vendor name, tier, risk category, and rating."
+
+  - id: JOIN-02
+    left_table: fct_purchase_orders
+    right_table: dim_employee
+    join_condition: "fct_purchase_orders.company = dim_employee.company AND fct_purchase_orders.buyer_id = dim_employee.employee_num"
+    usage: "Identify the responsible buyer's name, title, department, and location."
+
+  - id: JOIN-03
+    left_table: fct_purchase_orders
+    right_table: dim_part
+    join_condition: "fct_purchase_orders.company = dim_part.company AND fct_purchase_orders.part_num = dim_part.part_num"
+    usage: "Enrich purchase orders with part description, product group, ABC classification, and criticality."
+
+  - id: JOIN-04
+    left_table: fct_po_receipts
+    right_table: dim_po
+    join_condition: "fct_po_receipts.company = dim_po.company AND fct_po_receipts.po_number = dim_po.po_number"
+    usage: "Link goods receipts back to PO header attributes (PO type, buyer group, freight terms, approval status)."
+
+  - id: JOIN-05
+    left_table: fct_po_receipts
+    right_table: dim_vendor
+    join_condition: "fct_po_receipts.company = dim_vendor.company AND fct_po_receipts.vendor_num = dim_vendor.vendor_num"
+    usage: "Analyze OTIF and quality rejection rates by supplier name, tier, or risk category."
+
+  - id: JOIN-06
+    left_table: fct_po_receipts
+    right_table: dim_part
+    join_condition: "fct_po_receipts.company = dim_part.company AND fct_po_receipts.part_num = dim_part.part_num"
+    usage: "Analyze receipt volume and defect rates by part category, class, or criticality."
+
+  - id: JOIN-07
+    left_table: fct_po_receipts
+    right_table: dim_warehousebin
+    join_condition: "fct_po_receipts.company = dim_warehousebin.company AND fct_po_receipts.warehouse_code = dim_warehousebin.warehouse_code AND fct_po_receipts.bin_num = dim_warehousebin.bin_num"
+    usage: "Analyze receiving activity by warehouse name, type, location, or bin zone."
+
+  - id: JOIN-08
+    left_table: fct_inventory_position
+    right_table: dim_part
+    join_condition: "fct_inventory_position.company = dim_part.company AND fct_inventory_position.part_num = dim_part.part_num"
+    usage: "Analyze inventory valuation, stockouts, and days of inventory by part category, product group, or ABC class."
+
+  - id: JOIN-09
+    left_table: fct_inventory_position
+    right_table: dim_warehousebin
+    join_condition: "fct_inventory_position.company = dim_warehousebin.company AND fct_inventory_position.warehouse_code = dim_warehousebin.warehouse_code AND fct_inventory_position.bin_num = dim_warehousebin.bin_num"
+    usage: "Analyze stock levels and bin capacity utilization by warehouse, city, or nettable bin flag."
+
+  - id: JOIN-10
+    left_table: fct_purchase_orders
+    right_table: dim_supplier_price_list
+    join_condition: "fct_purchase_orders.company = dim_supplier_price_list.company AND fct_purchase_orders.part_num = dim_supplier_price_list.part_num AND fct_purchase_orders.vendor_num = dim_supplier_price_list.vendor_num"
+    usage: "Compare actual PO unit_price against contracted quoted_unit_price for Purchase Price Variance (PPV) and maverick spend."

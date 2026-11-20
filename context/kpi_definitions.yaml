@@ -1,0 +1,179 @@
+kpis:
+  - id: KPI-001
+    name: Total Inventory Valuation
+    synonyms: ["inventory value", "stock value", "total stock valuation", "on-hand value"]
+    business_definition: >
+      Total financial value of physical on-hand inventory for active (non-redundant)
+      parts across warehouses as of the latest available inventory snapshot date.
+    formula_logic: "SUM(inv.inventory_value)"
+    mandatory_filters:
+      - "inv.snapshot_date = (SELECT MAX(snapshot_date) FROM fct_inventory_position)"
+      - "p.is_active = TRUE"
+    required_tables: ["fct_inventory_position", "dim_part"]
+    notes: >
+      CRITICAL: 1) fct_inventory_position is a periodic monthly snapshot table—never sum
+      across multiple snapshot_dates unless explicitly asked for a historical trend.
+      2) Always join dim_part (on company + part_num) and filter p.is_active = TRUE to
+      exclude inactive or redundant parts from active inventory valuation.
+    owner: "Supply Chain Finance"
+    version: "v2.1"
+
+  - id: KPI-002
+    name: On-Time In-Full (OTIF) Rate
+    synonyms: ["OTIF", "supplier delivery performance", "on-time delivery", "perfect order rate"]
+    business_definition: >
+      Percentage of posted goods receipts that arrived within the acceptable delivery
+      tolerance window of -3 days to +3 days from the due date (neither excessively early
+      nor late), completely fulfilled the PO release, and had zero quality rejections.
+    formula_logic: >
+      100.0 * SUM(
+        CASE
+          WHEN r.days_early_late BETWEEN -3 AND 3
+           AND r.is_complete_receipt = TRUE
+           AND r.rejected_quantity = 0
+          THEN 1 ELSE 0
+        END
+      ) / NULLIF(COUNT(*), 0)
+    mandatory_filters:
+      - "r.receipt_status = 'Posted'"
+    required_tables: ["fct_po_receipts"]
+    notes: >
+      CRITICAL: On-Time is strictly defined as days_early_late BETWEEN -3 AND 3.
+      Do NOT use days_early_late <= 0, because shipments arriving far ahead of schedule
+      inflate inventory holding costs and do not reflect schedule adherence.
+    owner: "Procurement Operations"
+    version: "v2.0"
+
+  - id: KPI-003
+    name: Purchase Price Variance (PPV)
+    synonyms: ["PPV", "price variance", "maverick spend", "overpayment vs quote", "quoted vs actual price"]
+    business_definition: >
+      Dollar variance between the actual PO unit price and the reference benchmark price,
+      multiplied by ordered quantity, across non-void PO releases. Uses a 2-tier price
+      fallback: first check the supplier-specific quoted price in dim_supplier_price_list;
+      if no active record exists for that vendor-part pair, fall back to dim_part.standard_cost.
+      Positive PPV indicates unfavorable spend (paid above benchmark).
+    formula_logic: >
+      SUM((po.unit_price - COALESCE(spl.quoted_unit_price, p.standard_cost)) * po.order_quantity)
+    mandatory_filters:
+      - "po.po_status != 'Void'"
+      - "po.release_status != 'Void'"
+    required_tables: ["fct_purchase_orders", "dim_supplier_price_list", "dim_part"]
+    notes: >
+      CRITICAL: You MUST use a LEFT JOIN (not INNER JOIN) to dim_supplier_price_list on
+      (company, part_num, vendor_num) with spl.is_active = TRUE, and INNER JOIN dim_part
+      on (company, part_num) so that COALESCE(spl.quoted_unit_price, p.standard_cost)
+      handles parts missing from the supplier price list without dropping PO releases.
+    owner: "Strategic Sourcing"
+    version: "v2.0"
+
+  - id: KPI-004
+    name: Open PO Value
+    synonyms: ["open purchase order value", "pending PO spend", "unreceived PO value", "open commitment"]
+    business_definition: >
+      Total dollar value of pending (unreceived) quantities strictly at the open PO
+      release level, excluding closed releases and all void orders, lines, or releases.
+    formula_logic: "SUM(po.open_quantity * po.unit_price)"
+    mandatory_filters:
+      - "po.release_status = 'Open'"
+      - "po.is_open = TRUE"
+      - "po.open_quantity > 0"
+      - "po.po_status != 'Void'"
+      - "po.release_status != 'Void'"
+    required_tables: ["fct_purchase_orders"]
+    notes: >
+      CRITICAL: Evaluate openness strictly at the PO release level (release_status = 'Open'
+      and open_quantity > 0), NOT at the PO header level (po_status = 'Open'), because an
+      open PO may contain individual releases that are already closed or received. Always
+      exclude Void orders and Void releases.
+    owner: "Procurement Operations"
+    version: "v2.0"
+
+  - id: KPI-005
+    name: Past-Due PO Rate
+    synonyms: ["late PO rate", "overdue purchase orders", "delayed PO percentage"]
+    business_definition: >
+      Percentage of currently open (non-void) PO releases that are past their expected
+      due date by more than 3 days (grace period of 3 days applied).
+    formula_logic: >
+      100.0 * SUM(CASE WHEN po.days_past_due > 3 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    mandatory_filters:
+      - "po.release_status = 'Open'"
+      - "po.is_open = TRUE"
+      - "po.po_status != 'Void'"
+      - "po.release_status != 'Void'"
+    required_tables: ["fct_purchase_orders"]
+    notes: >
+      CRITICAL: Apply a 3-day grace period—only count open releases where days_past_due > 3
+      (do NOT rely on the raw is_late flag alone, which triggers at 1 day past due).
+      Always exclude Void orders and Void releases.
+    owner: "Procurement Operations"
+    version: "v2.0"
+
+  - id: KPI-006
+    name: Supplier Quality Rejection Rate
+    synonyms: ["defect rate", "rejection rate", "quality failure rate", "rejected quantity percentage"]
+    business_definition: >
+      Percentage of total received units across posted receipts that failed quality
+      inspection and were rejected.
+    formula_logic: "100.0 * SUM(r.rejected_quantity) / NULLIF(SUM(r.received_quantity), 0)"
+    mandatory_filters:
+      - "r.receipt_status = 'Posted'"
+    required_tables: ["fct_po_receipts"]
+    owner: "Quality Assurance"
+    version: "v1.0"
+
+  - id: KPI-007
+    name: Stockout Rate
+    synonyms: ["out of stock rate", "stockout percentage", "zero inventory rate"]
+    business_definition: >
+      Percentage of part-warehouse-bin inventory positions currently in a Stockout state
+      as of the latest snapshot date.
+    formula_logic: "100.0 * SUM(CASE WHEN inv.stock_status = 'Stockout' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)"
+    mandatory_filters:
+      - "inv.snapshot_date = (SELECT MAX(snapshot_date) FROM fct_inventory_position)"
+    required_tables: ["fct_inventory_position"]
+    owner: "Inventory Planning"
+    version: "v1.3"
+
+  - id: KPI-008
+    name: Below-Minimum Stock Risk Count
+    synonyms: ["understock count", "low stock items", "items below safety stock", "reorder alerts"]
+    business_definition: >
+      Count of inventory positions (company + part + warehouse + bin) where on-hand
+      quantity is below the minimum stock threshold as of the latest snapshot date.
+    formula_logic: "SUM(CASE WHEN inv.is_below_minimum = TRUE THEN 1 ELSE 0 END)"
+    mandatory_filters:
+      - "inv.snapshot_date = (SELECT MAX(snapshot_date) FROM fct_inventory_position)"
+    required_tables: ["fct_inventory_position"]
+    owner: "Inventory Planning"
+    version: "v1.0"
+
+  - id: KPI-009
+    name: Total Procurement Spend
+    synonyms: ["total PO spend", "total purchasing volume", "ordered spend", "PO value"]
+    business_definition: >
+      Total extended dollar value of all non-void purchase order releases issued within
+      the requested timeframe.
+    formula_logic: "SUM(po.extended_price)"
+    mandatory_filters:
+      - "po.po_status != 'Void'"
+      - "po.release_status != 'Void'"
+    required_tables: ["fct_purchase_orders"]
+    notes: "Always exclude Void orders and Void releases to prevent spend overstatement."
+    owner: "Strategic Sourcing"
+    version: "v1.1"
+
+  - id: KPI-010
+    name: Average Planned Lead Time
+    synonyms: ["average lead time", "PO lead time", "supplier lead time days"]
+    business_definition: >
+      Average number of calendar days between PO order_date and expected due_date across
+      non-void purchase order releases.
+    formula_logic: "AVG(po.lead_time_days)"
+    mandatory_filters:
+      - "po.po_status != 'Void'"
+      - "po.release_status != 'Void'"
+    required_tables: ["fct_purchase_orders"]
+    owner: "Supply Chain Analytics"
+    version: "v1.1"
