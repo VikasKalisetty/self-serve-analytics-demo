@@ -211,12 +211,22 @@ class AnalyticsEngine:
                 },
             ],
             temperature=temperature,
-            reasoning_effort="low",
+            reasoning_effort=None,
             max_tokens=4096,
         )
-        content = response.choices[0].message.content
+        choice = next(iter(response.choices), None)
+        if choice is None:
+            raise ValueError("Sarvam returned no completion choices.")
+
+        message = choice.message
+        content = message.content
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("Sarvam returned an empty structured response.")
+            finish_reason = getattr(choice, "finish_reason", "unknown")
+            reasoning_present = bool(getattr(message, "reasoning_content", None))
+            raise ValueError(
+                "Sarvam returned no visible content "
+                f"(finish_reason={finish_reason}, reasoning_content_present={reasoning_present})."
+            )
         return response_model.model_validate_json(content)
 
     def get_raw_schema(self) -> str:
