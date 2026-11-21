@@ -60,6 +60,9 @@ def render_assistant_details(msg: dict):
     badge = "🟢 Enterprise Context: ON" if msg["context_on"] else "🟠 Enterprise Context: OFF (Ungrounded)"
     st.caption(badge)
 
+    if msg.get("is_followup") and msg.get("standalone_question"):
+        st.caption(f"🔄 **Resolved Follow-Up:** {msg['standalone_question']}")
+
     if msg.get("summary"):
         st.markdown(msg["summary"])
 
@@ -194,6 +197,9 @@ if st.session_state.pending_grounding is not None:
 
     with st.chat_message("assistant"):
         st.info(f"### ✅ Grounding Verification ({mode_label})")
+        if pending["bundle"].get("is_followup"):
+            st.caption(f"🔄 **Resolved Follow-Up:** {pending['bundle']['standalone_question']}")
+
         kpi_match = pending["bundle"]["retrieved"].get("kpi_match", {})
         if pending["bundle"]["context_on"] and not kpi_match.get("is_exact", False):
             st.warning(
@@ -220,6 +226,8 @@ if st.session_state.pending_grounding is not None:
                     "id": len(st.session_state.messages),
                     "role": "assistant",
                     "context_on": pending["bundle"]["context_on"],
+                    "is_followup": pending["bundle"].get("is_followup", False),
+                    "standalone_question": pending["bundle"].get("standalone_question", pending["question"]),
                     "summary": exec_res["viz"]["executive_summary"],
                     "df": exec_res["df"],
                     "viz": exec_res["viz"],
@@ -248,9 +256,12 @@ user_input = st.chat_input("Ask about Inventory Valuation, OTIF, PPV, Open PO Va
 question = selected_demo or user_input
 
 if question:
+    prior_history = list(st.session_state.messages)
     st.session_state.messages.append({"role": "user", "content": question})
-    with st.spinner("Retrieving Enterprise Context & verifying grounding..."):
-        bundle = engine.create_grounding_plan(question, context_on=context_on)
+    with st.spinner("Resolving context & verifying grounding..."):
+        bundle = engine.create_grounding_plan(
+            question, context_on=context_on, chat_history=prior_history
+        )
 
     plan = bundle["plan"]
     if not plan.get("is_answerable", True):
@@ -273,6 +284,8 @@ if question:
                 "id": len(st.session_state.messages),
                 "role": "assistant",
                 "context_on": context_on,
+                "is_followup": bundle.get("is_followup", False),
+                "standalone_question": bundle.get("standalone_question", question),
                 "summary": exec_res["viz"]["executive_summary"],
                 "df": exec_res["df"],
                 "viz": exec_res["viz"],

@@ -145,6 +145,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
 # --- Structured Output Schemas ---
 
+class RewrittenQuery(BaseModel):
+    is_followup: bool = Field(description="True if the user's message depends on prior conversation turns.")
+    standalone_question: str = Field(description="Self-contained analytics question with all prior context resolved.")
+
+
 class GroundingPlan(BaseModel):
     is_answerable: bool = Field(description="False if the question is outside procurement/inventory data.")
     decline_reason: str = Field(default="", description="Polite explanation if is_answerable is False.")
@@ -227,7 +232,9 @@ class AnalyticsEngine:
                 "Sarvam returned no visible content "
                 f"(finish_reason={finish_reason}, reasoning_content_present={reasoning_present})."
             )
-        return response_model.model_validate_json(content)
+        # Strip accidental markdown code fences if present
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
+        return response_model.model_validate_json(cleaned)
 
     def get_raw_schema(self) -> str:
         """Used when Enterprise Context is OFF: raw table & column names only, zero business rules."""
@@ -241,6 +248,44 @@ class AnalyticsEngine:
         """).fetchall()
         con.close()
         return "\n".join(f"- {tbl}: {cols}" for tbl, cols in rows)
+
+    def rewrite_question(
+        self, question: str, chat_history: list[dict[str, Any]]
+    ) -> RewrittenQuery:
+        """Resolves follow-up prompts (e.g. 'filter by company') into a standalone question using chat history."""
+        if not chat_history:
+            return RewrittenQuery(is_followup=False, standalone_question=question)
+
+        history_lines = []
+        for m in chat_history[-6:]:
+            if m["role"] == "user":
+                history_lines.append(f"User: {m['content']}")
+            elif not m.get("declined"):
+                metric = m.get("plan", {}).get("metric_name", "")
+                sql = m.get("sql", "")
+                history_lines.append(
+                    f"Assistant (Metric: {metric}): {m.get('summary', '')}\nPrevious SQL: {sql}"
+                )
+
+        if not history_lines:
+            return RewrittenQuery(is_followup=False, standalone_question=question)
+
+        history_text = "\n".join(history_lines)
+        prompt = f"""
+You are a conversational query rewriter for an enterprise analytics assistant.
+Given the conversation history and the user's latest message, rewrite the latest message into a
+complete, standalone analytics question.
+- If the latest message is a follow-up (e.g., "filter down by company", "only for COMP01", "break that down by vendor"),
+  merge it with the prior metric, entities, and filters from the most recent turn.
+- If the latest message is a brand new analytics question, return it unchanged and set is_followup=False.
+
+--- CONVERSATION HISTORY ---
+{history_text}
+
+--- LATEST USER MESSAGE ---
+{question}
+"""
+        return self._generate_structured_response(prompt, RewrittenQuery, temperature=0.0)
 
     def retrieve_context(self, question: str) -> dict[str, Any]:
         """Uses exact KPI names first and semantic retrieval only for reference KPIs."""
@@ -314,16 +359,24 @@ class AnalyticsEngine:
 
         return {"kpis": kpis, "semantic": sem_docs, "kpi_match": kpi_match}
 
-    def create_grounding_plan(self, question: str, context_on: bool) -> dict[str, Any]:
-        """Step 1 & 2: Retrieve context (if ON) and generate a structured Grounding Verification Plan."""
+    def create_grounding_plan(
+        self,
+        question: str,
+        context_on: bool,
+        chat_history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Step 0, 1 & 2: Rewrite follow-up, retrieve context (if ON), and generate Grounding Plan."""
+        rewritten = self.rewrite_question(question, chat_history or [])
+        resolved_q = rewritten.standalone_question
+
         if context_on:
-            retrieved = self.retrieve_context(question)
+            retrieved = self.retrieve_context(resolved_q)
             kpi_block = "\n\n".join(k["content"] for k in retrieved["kpis"])
             sem_block = "\n\n".join(s["content"] for s in retrieved["semantic"])
-            kpi_selection = _kpi_selection_instruction(question, retrieved)
+            kpi_selection = _kpi_selection_instruction(resolved_q, retrieved)
             prompt = f"""
 You are an Enterprise AI Analytics Architect.
-A user asked: "{question}"
+A user asked: "{resolved_q}"
 
 Use the KPI Selection Guardrail below to decide whether a retrieved KPI is an exact match or reference-only.
 Use the Semantic Layer for available tables, joins, and global rules.
@@ -354,7 +407,7 @@ If an exact KPI match exists, return its governed definition and formula. Otherw
             raw_schema = self.get_raw_schema()
             prompt = f"""
 You are a basic SQL assistant without access to an Enterprise Context or Semantic Layer.
-A user asked: "{question}"
+A user asked: "{resolved_q}"
 
 Here is the raw database schema (table and column names only):
 {raw_schema}
@@ -368,10 +421,13 @@ Otherwise, make your best ungrounded guess at the metric definition, formula, an
             "plan": plan.model_dump(),
             "retrieved": retrieved,
             "context_on": context_on,
+            "standalone_question": resolved_q,
+            "is_followup": rewritten.is_followup,
         }
 
     def generate_and_execute_sql(self, question: str, grounding_bundle: dict[str, Any]) -> dict[str, Any]:
         """Step 3, 4 & 5: Generate CoT + DuckDB SQL, execute with self-healing retries, and create viz + summary."""
+        resolved_q = grounding_bundle.get("standalone_question", question)
         plan = grounding_bundle["plan"]
         retrieved = grounding_bundle["retrieved"]
         context_on = grounding_bundle["context_on"]
@@ -380,7 +436,7 @@ Otherwise, make your best ungrounded guess at the metric definition, formula, an
         if context_on:
             kpi_block = "\n\n".join(k["content"] for k in retrieved["kpis"])
             sem_block = "\n\n".join(s["content"] for s in retrieved["semantic"])
-            kpi_selection = _kpi_selection_instruction(question, retrieved)
+            kpi_selection = _kpi_selection_instruction(resolved_q, retrieved)
             context_section = f"""
 --- KPI SELECTION GUARDRAIL ---
 {kpi_selection}
@@ -417,7 +473,7 @@ Otherwise, make your best ungrounded guess at the metric definition, formula, an
 
         base_prompt = f"""
 You are a DuckDB SQL expert.
-User Question: "{question}"
+User Question: "{resolved_q}"
 
 {context_section}
 
@@ -471,7 +527,7 @@ Instructions:
         # Step 5: Auto-Visualization & Executive Summary
         preview = df.head(15).to_markdown(index=False) if not df.empty else "No rows returned."
         viz_prompt = f"""
-User Question: "{question}"
+User Question: "{resolved_q}"
 Returned Columns & Types: {dict(df.dtypes.astype(str))}
 Row Count: {len(df)}
 Sample Data:
