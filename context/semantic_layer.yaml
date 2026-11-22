@@ -31,6 +31,7 @@ global_rules:
 tables:
   - name: fct_purchase_orders
     type: fact
+    aliases: ["PO releases", "purchase order releases", "purchase order release"]
     grain: "One row per PO release (company + po_number + po_line + po_release_number)"
     description: "Captures purchase order details at the release level including ordered, received, and open quantities, unit price, extended price, and lateness flags."
     key_columns:
@@ -40,10 +41,11 @@ tables:
       - "order_quantity, received_quantity, open_quantity, unit_price, extended_price"
       - "release_status, po_status, is_open, is_closed, is_confirmed, is_late"
       - "days_to_due_date, days_past_due, lead_time_days"
-    categorical_columns: [company, po_status, release_status]
+    categorical_columns: [company, po_status, release_status, is_open, is_closed, is_confirmed, is_late]
 
   - name: fct_po_receipts
     type: fact
+    aliases: ["PO receipts", "goods receipts", "purchase receipts", "receipts"]
     grain: "One row per goods receipt packing slip line (company + pack_slip + pack_line)"
     description: "Captures actual goods receipt transactions against POs, including accepted/rejected quantities, inspection outcomes, and early/late delivery days."
     key_columns:
@@ -52,10 +54,11 @@ tables:
       - "receipt_date, arrival_date, received_quantity, accepted_quantity, rejected_quantity"
       - "unit_cost, extended_cost, receipt_status"
       - "is_complete_receipt, is_partial_receipt, is_returned, days_early_late, inspection_required, inspection_status"
-    categorical_columns: [company, receipt_status, inspection_status]
+    categorical_columns: [company, receipt_status, inspection_status, is_complete_receipt, is_partial_receipt, is_returned, inspection_required]
 
   - name: fct_inventory_position
     type: fact
+    aliases: ["inventory positions", "inventory position", "inventory"]
     grain: "Periodic monthly snapshot per company + part_num + warehouse_code + bin_num + snapshot_date"
     description: "Captures physical on-hand, available, allocated, reserved, inspection, hold, and in-transit inventory quantities, valuation, thresholds, and stock_status."
     key_columns:
@@ -64,30 +67,33 @@ tables:
       - "inventory_value, average_unit_cost, days_of_inventory"
       - "minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
       - "stock_status (Overstock/Normal/Understock/Stockout), is_below_minimum, is_above_maximum"
-    categorical_columns: [company, stock_status]
+    categorical_columns: [company, stock_status, warehouse_code, bin_num, is_below_minimum, is_above_maximum]
 
   - name: dim_po
     type: dimension
+    aliases: ["PO headers", "purchase order headers", "purchase orders"]
     grain: "One row per PO header (company + po_number)"
     description: "Descriptive purchase order header attributes including PO type, payment/freight terms, shipping method, approval status, and buyer group."
     key_columns:
       - "company, po_number (Composite PK)"
       - "vendor_num, buyer_id, order_date, po_status, po_type, terms_code, ship_via_code, freight_terms"
       - "approval_status, approved_by, approval_date, is_approved, is_open, is_closed, is_blanket_order, buyer_group"
-    categorical_columns: [company, approval_status, buyer_group, freight_terms, po_status, po_type, ship_to_city, ship_to_state, ship_via_code, terms_code]
+    categorical_columns: [company, approval_status, buyer_group, freight_terms, po_status, po_type, ship_to_city, ship_to_state, ship_via_code, terms_code, is_approved, is_open, is_closed, is_blanket_order]
 
   - name: dim_employee
     type: dimension
+    aliases: ["employees", "employee", "buyers"]
     grain: "One row per employee (company + employee_num)"
     description: "Employee master data for buyers, approvers, warehouse managers, and inventory specialists."
     key_columns:
       - "company, employee_num (Composite PK)"
       - "employee_name, job_title, department, division, location, manager_id, manager_name"
       - "is_buyer, is_inventory_worker, is_warehouse_manager, is_approver"
-    categorical_columns: [company, department, division, employee_status, job_title, location]
+    categorical_columns: [company, department, division, employee_status, job_title, location, is_buyer, is_inventory_worker, is_warehouse_manager, is_approver]
 
   - name: dim_warehousebin
     type: dimension
+    aliases: ["warehouse bins", "warehouse bin", "warehouses", "warehouse", "bins"]
     grain: "One row per warehouse bin (company + warehouse_code + bin_num)"
     description: "Warehouse and bin attributes including warehouse type, location, bin zone, storage capacity, and nettable/receiving/shipping flags."
     key_columns:
@@ -95,10 +101,11 @@ tables:
       - "warehouse_name, warehouse_type, warehouse_city, warehouse_state"
       - "bin_name, bin_type, bin_zone, max_capacity, current_capacity, available_capacity"
       - "is_active, is_nettable, is_receiving_bin, is_shipping_bin, is_default_bin"
-    categorical_columns: [company, bin_name, bin_type, bin_zone, warehouse_city, warehouse_name, warehouse_state, warehouse_type]
+    categorical_columns: [company, bin_name, bin_type, bin_zone, warehouse_city, warehouse_name, warehouse_state, warehouse_type, warehouse_code, bin_num, is_active, is_nettable, is_receiving_bin, is_shipping_bin, is_default_bin]
 
   - name: dim_vendor
     type: dimension
+    aliases: ["vendors", "vendor", "suppliers", "supplier"]
     grain: "One row per vendor (company + vendor_num)"
     description: "Supplier master data including vendor name, category, tier (Strategic/Preferred/Transactional), risk category, rating, and default lead time."
     key_columns:
@@ -106,10 +113,11 @@ tables:
       - "vendor_name, vendor_type, vendor_category, vendor_status, supplier_tier"
       - "is_preferred_supplier, is_strategic_supplier, is_approved_supplier"
       - "payment_terms, lead_time_days, supplier_rating, supplier_risk_category"
-    categorical_columns: [company, payment_terms, supplier_risk_category, supplier_tier, vendor_category, vendor_status, vendor_type]
+    categorical_columns: [company, payment_terms, supplier_risk_category, supplier_tier, vendor_category, vendor_status, vendor_type, is_preferred_supplier, is_strategic_supplier, is_approved_supplier]
 
   - name: dim_part
     type: dimension
+    aliases: ["parts", "part", "materials", "material"]
     grain: "One row per part (company + part_num)"
     description: "Part and material master data including description, class, category, product group, standard/average cost, ABC classification, and criticality."
     key_columns:
@@ -117,17 +125,76 @@ tables:
       - "part_description, part_type, part_class, part_category, product_group, product_family"
       - "standard_cost, average_cost, minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
       - "abc_classification, criticality, default_lead_time_days"
-    categorical_columns: [company, abc_classification, criticality, part_category, part_class, part_type, product_family, product_group]
+    categorical_columns: [company, abc_classification, criticality, part_category, part_class, part_type, product_family, product_group, is_active]
 
   - name: dim_supplier_price_list
     type: dimension
+    aliases: ["supplier price lists", "supplier price list", "supplier pricing", "contracted prices", "price lists"]
     grain: "One row per company + part_num + vendor_num"
     description: "Supplier-specific contracted pricing, MOQ/order multiples, quoted lead times, price breaks, and primary/preferred supplier flags."
     key_columns:
       - "company, part_num, vendor_num (Composite PK)"
       - "quoted_unit_price, minimum_price, maximum_price, discount_percentage, price_break_quantity"
       - "standard_lead_time_days, minimum_order_quantity, is_preferred_supplier, is_primary_supplier"
-    categorical_columns: [company]
+    categorical_columns: [company, is_preferred_supplier, is_primary_supplier]
+
+dimension_explorations:
+  - id: PO-RELEASE-DIMENSIONS
+    name: Purchase Order Release Dimensions
+    description: >
+      Lists observed release- and PO-header-level categories useful for analyzing
+      purchase order releases. PO-header attributes are associated with releases
+      using their documented composite joins.
+    match_terms: ["PO release", "PO releases", "purchase order release", "purchase order releases"]
+    base_table: fct_purchase_orders
+    dimensions:
+      - name: Company
+        table: fct_purchase_orders
+        column: company
+        grain: Release-level
+      - name: Release status
+        table: fct_purchase_orders
+        column: release_status
+        grain: Release-level
+      - name: Late status
+        table: fct_purchase_orders
+        column: is_late
+        grain: Release-level
+        value_labels:
+          "true": Late
+          "false": Not late
+      - name: Void status
+        derived: void_status
+        grain: Release-level
+        notes: "Derived from release_status and po_status; a Void value appears only if present in the source data."
+      - name: PO status
+        table: fct_purchase_orders
+        column: po_status
+        grain: PO-header-level attribute linked to releases
+      - name: PO type
+        table: dim_po
+        column: po_type
+        grain: PO-header-level attribute linked to releases
+        join_id: JOIN-11
+        notes: "Standard is the regular PO type; Blanket and Expedited are separate types."
+      - name: Blanket order flag
+        table: dim_po
+        column: is_blanket_order
+        grain: PO-header-level attribute linked to releases
+        join_id: JOIN-11
+        value_labels:
+          "true": Blanket
+          "false": Non-blanket
+      - name: Supplier tier
+        table: dim_vendor
+        column: supplier_tier
+        grain: Vendor attribute associated with releases
+        join_id: JOIN-01
+      - name: Buyer group
+        table: dim_po
+        column: buyer_group
+        grain: PO-header-level attribute linked to releases
+        join_id: JOIN-11
 
 joins:
   - id: JOIN-01
@@ -189,3 +256,9 @@ joins:
     right_table: dim_supplier_price_list
     join_condition: "fct_purchase_orders.company = dim_supplier_price_list.company AND fct_purchase_orders.part_num = dim_supplier_price_list.part_num AND fct_purchase_orders.vendor_num = dim_supplier_price_list.vendor_num"
     usage: "Compare actual PO unit_price against contracted quoted_unit_price for Purchase Price Variance (PPV) and maverick spend."
+
+  - id: JOIN-11
+    left_table: fct_purchase_orders
+    right_table: dim_po
+    join_condition: "fct_purchase_orders.company = dim_po.company AND fct_purchase_orders.po_number = dim_po.po_number"
+    usage: "Enrich PO releases with header-level PO status, type, blanket-order flag, and buyer group."

@@ -141,6 +141,7 @@ def main():
     for t in sem_data["tables"]:
         doc_text = (
             f"Table: {t['name']} ({t['type']})\n"
+            f"Aliases: {', '.join(t.get('aliases', [])) or 'None'}\n"
             f"Grain: {t['grain']}\n"
             f"Description: {t['description']}\n"
             f"Key Columns:\n- " + "\n- ".join(t["key_columns"])
@@ -173,7 +174,7 @@ def main():
         sem_metas.append({"doc_type": "rule", "title": r["title"]})
 
     sem_col.add(ids=sem_ids, documents=sem_docs, metadatas=sem_metas)
-    print(f"  [Indexed] semantic_layer  -> {len(sem_ids)} documents (9 tables, 10 joins, 4 global rules)")
+    print(f"  [Indexed] semantic_layer  -> {len(sem_ids)} documents (9 tables, 11 joins, 4 global rules)")
 
     # 3. Quick Retrieval Sanity Check
     test_query = "What is our Purchase Price Variance (PPV) by vendor tier?"

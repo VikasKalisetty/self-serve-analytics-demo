@@ -55,6 +55,14 @@ def render_chart(df: pd.DataFrame, viz: dict):
         st.dataframe(df, use_container_width=True)
 
 
+def render_grounding_considerations(plan: dict):
+    considerations = plan.get("grounding_considerations", [])
+    if considerations:
+        st.markdown("**Grounding considerations**")
+        for consideration in considerations:
+            st.markdown(f"- {consideration}")
+
+
 # --- Helper: Render Glass-Box Reasoning Drawer ---
 def render_assistant_details(msg: dict):
     badge = "🟢 Enterprise Context: ON" if msg["context_on"] else "🟠 Enterprise Context: OFF (Ungrounded)"
@@ -65,6 +73,8 @@ def render_assistant_details(msg: dict):
 
     if msg.get("summary"):
         st.markdown(msg["summary"])
+
+    render_grounding_considerations(msg.get("plan", {}))
 
     if msg.get("df") is not None and not msg["df"].empty and msg.get("viz"):
         render_chart(msg["df"], msg["viz"])
@@ -77,13 +87,18 @@ def render_assistant_details(msg: dict):
             st.markdown(f"**Metric:** `{plan.get('metric_name', 'N/A')}`")
             st.markdown(f"**Definition:** {plan.get('business_definition', 'N/A')}")
             st.markdown(f"**Formula:** `{plan.get('formula_summary', 'N/A')}`")
+            columns = plan.get("columns_to_use", [])
+            st.markdown(
+                "**Selected Columns:** "
+                + (", ".join(f"`{column}`" for column in columns) if columns else "None")
+            )
             filters = plan.get("mandatory_filters", [])
             st.markdown("**Mandatory Filters:** " + (", ".join(f"`{f}`" for f in filters) if filters else "None"))
             st.markdown(f"**Join Strategy:** {plan.get('join_strategy', 'N/A')}")
 
             retrieved = msg.get("retrieved", {})
             kpi_match = retrieved.get("kpi_match", {})
-            if msg["context_on"] and not kpi_match.get("is_exact", False):
+            if msg["context_on"] and retrieved.get("kpis") and not kpi_match.get("is_exact", False):
                 st.warning(
                     "No exact KPI name/synonym match was found. Retrieved KPI documents "
                     "were used as reference context, not as the selected KPI."
@@ -209,6 +224,12 @@ if st.session_state.pending_grounding is not None:
         st.markdown(f"**Metric:** `{plan['metric_name']}`")
         st.markdown(f"**Definition:** {plan['business_definition']}")
         st.markdown(f"**Formula:** `{plan['formula_summary']}`")
+        render_grounding_considerations(plan)
+        columns = plan.get("columns_to_use", [])
+        st.markdown(
+            "**Selected Columns:** "
+            + (", ".join(f"`{column}`" for column in columns) if columns else "None")
+        )
         filters = plan.get("mandatory_filters", [])
         st.markdown("**Mandatory Filters:** " + (", ".join(f"`{f}`" for f in filters) if filters else "None"))
         st.markdown(f"**Tables & Join Strategy:** {', '.join(plan.get('tables_to_use', []))} — {plan.get('join_strategy', '')}")
@@ -252,7 +273,9 @@ if st.session_state.pending_grounding is not None:
 
 
 # --- Chat Input Handling ---
-user_input = st.chat_input("Ask about Inventory Valuation, OTIF, PPV, Open PO Value, or Past-Due POs...")
+user_input = st.chat_input(
+    "Ask about KPIs or request dimensions for any lakehouse table..."
+)
 question = selected_demo or user_input
 
 if question:
@@ -262,6 +285,23 @@ if question:
         bundle = engine.create_grounding_plan(
             question, context_on=context_on, chat_history=prior_history
         )
+
+    if "semantic_exploration" in bundle:
+        exploration = bundle["semantic_exploration"]
+        st.session_state.messages.append({
+            "id": len(st.session_state.messages),
+            "role": "assistant",
+            "context_on": bundle["context_on"],
+            "summary": exploration["summary"],
+            "df": exploration["df"],
+            "viz": {"chart_type": "table"},
+            "sql": exploration["sql"],
+            "cot": [],
+            "plan": bundle["plan"],
+            "retrieved": bundle["retrieved"],
+            "semantic_exploration": True,
+        })
+        st.rerun()
 
     plan = bundle["plan"]
     if not plan.get("is_answerable", True):
