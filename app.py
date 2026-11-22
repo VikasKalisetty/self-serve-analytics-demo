@@ -30,18 +30,28 @@ st.markdown("""
 
 .block-container {
     max-width: 1800px;
-    padding: .25rem 1rem .75rem;
-    margin-top: 0;
+    padding: 0 12px 12px !important;
+    margin: 0 auto;
+}
+
+[data-testid="stApp"] {
+    height: 100vh;
 }
 
 [data-testid="stSidebar"] { display: none; }
 [data-testid="stHeader"] { height: 0; }
 [data-testid="stToolbar"] { display: none !important; }
 [data-testid="stAppViewBlockContainer"] {
-    padding-top: 0.25rem;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 section.main > div {
-    padding-top: 0.25rem;
+    padding: 0 !important;
+}
+section.main,
+[data-testid="stAppViewContainer"] {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
 }
 [data-testid="stElementToolbar"],
 .stElementToolbar,
@@ -92,21 +102,6 @@ section.main > div {
     padding: .35rem .65rem;
     font-size: .75rem;
     font-weight: 750;
-}
-
-.pane {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--panel);
-    height: calc(100vh - 22px);
-    min-height: 520px;
-    overflow: hidden;
-}
-
-.pane-scroll {
-    height: 100%;
-    overflow-y: auto;
-    padding: .55rem;
 }
 
 .pane-title {
@@ -260,7 +255,6 @@ section.main > div {
 }
 
 @media (max-width: 1000px) {
-    .pane { height: auto; min-height: 420px; }
     .chat-scroll { max-height: 480px; }
 }
 </style>
@@ -282,10 +276,6 @@ if "generated_datasets" not in st.session_state:
     st.session_state.generated_datasets = []
 if "active_dataset_id" not in st.session_state:
     st.session_state.active_dataset_id = None
-if "canvas_items" not in st.session_state:
-    st.session_state.canvas_items = []
-if "canvas_objects" not in st.session_state:
-    st.session_state.canvas_objects = []
 if "semantic_context_on" not in st.session_state:
     st.session_state.semantic_context_on = True
 if "hitl_grounding_on" not in st.session_state:
@@ -926,10 +916,13 @@ def render_canvas():
                         )
 
 
+# Streamlit columns own the three-panel layout. Avoid opening HTML divs in one
+# st.markdown call and closing them in another: Streamlit sanitizes each block
+# independently, which previously rendered empty fixed-height bordered boxes.
 left, center, right = st.columns([0.22, 0.50, 0.28], gap="small")
 
 with left:
-    st.markdown('<div class="pane"><div class="pane-scroll">', unsafe_allow_html=True)
+    # Pane wrapper removed: Streamlit columns provide the layout.
     st.markdown('<div class="pane-title"><span>Datasets</span></div>', unsafe_allow_html=True)
 
     datasets = st.session_state.generated_datasets
@@ -965,92 +958,35 @@ with left:
         )
         st.session_state.active_dataset_id = active_dataset["id"]
 
-        st.divider()
-        st.markdown('<div class="pane-title"><span>Visual type</span></div>', unsafe_allow_html=True)
-        visual_type = st.selectbox(
-            "Choose visualization",
-            ["Table", "Bar", "Line", "KPI card"],
-            label_visibility="collapsed",
-            key=f"viz_type_{active_dataset['id']}",
-        )
-
-        numeric = [
-            column for column in active_dataset["df"].columns
-            if pd.api.types.is_numeric_dtype(active_dataset["df"][column])
-        ]
-        categorical = [
-            column for column in active_dataset["df"].columns
-            if column not in numeric
-        ]
-
-        x_col = st.selectbox(
-            "Category / X axis",
-            categorical or list(active_dataset["df"].columns),
-            key=f"x_{active_dataset['id']}",
-        ) if visual_type in {"Bar", "Line"} else ""
-        y_col = st.selectbox(
-            "Value / Y axis",
-            numeric or list(active_dataset["df"].columns),
-            key=f"y_{active_dataset['id']}",
-        ) if visual_type in {"Bar", "Line"} else ""
-
-        if st.button("Add to whiteboard", type="primary", use_container_width=True):
-            viz = {
-                "chart_type": {
-                    "Table": "table",
-                    "Bar": "bar",
-                    "Line": "line",
-                    "KPI card": "kpi_card",
-                }[visual_type],
-                "x_col": x_col,
-                "y_col": y_col,
-                "chart_title": active_dataset["title"],
-            }
-            st.session_state.canvas_items.append({
-                "id": f"canvas_{len(st.session_state.canvas_items) + 1}",
-                "title": active_dataset["title"],
-                "df": active_dataset["df"].copy(),
-                "viz": viz,
-            })
-            st.rerun()
-
         with st.expander("Dataset preview", expanded=False):
             st.dataframe(active_dataset["df"].head(100), use_container_width=True)
 
-    if st.button("Clear whiteboard", use_container_width=True):
-        st.session_state.canvas_items = []
-        st.session_state.canvas_objects = []
-        st.rerun()
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    # No closing pane wrapper is needed.
 
 with center:
-    st.markdown('<div class="pane"><div class="canvas-toolbar"><span class="canvas-title">Whiteboard</span><span class="canvas-hint">Add cards and annotations</span></div>', unsafe_allow_html=True)
-    add_text, add_rectangle, add_circle = st.columns(3)
-    if add_text.button("＋ Text", use_container_width=True):
-        st.session_state.canvas_objects.append({
-            "id": f"text_{len(st.session_state.canvas_objects) + 1}",
-            "type": "text",
-            "text": "New text",
-        })
-        st.rerun()
-    if add_rectangle.button("▢ Rectangle", use_container_width=True):
-        st.session_state.canvas_objects.append({
-            "id": f"rectangle_{len(st.session_state.canvas_objects) + 1}",
-            "type": "rectangle",
-        })
-        st.rerun()
-    if add_circle.button("○ Circle", use_container_width=True):
-        st.session_state.canvas_objects.append({
-            "id": f"circle_{len(st.session_state.canvas_objects) + 1}",
-            "type": "circle",
-        })
-        st.rerun()
-    render_canvas()
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Pane wrapper removed: Streamlit columns provide the layout.
+    st.markdown(
+        """
+        <div style="height:calc(100vh - 22px);display:flex;flex-direction:column;
+                    align-items:center;justify-content:flex-start;padding-top:38px;
+                    text-align:center;color:#667085;">
+            <div style="width:44px;height:44px;margin-bottom:10px;border-radius:12px;
+                        display:grid;place-items:center;background:#edf2ff;color:#315efb;
+                        border:1px solid #dbe5ff;font-size:18px;">◆</div>
+            <div style="color:#344054;font-size:15px;font-weight:800;margin-bottom:5px;">
+                Build your analysis
+            </div>
+            <div style="max-width:360px;font-size:12px;line-height:1.45;">
+                Select a generated dataset, choose a visual, and add it here.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # No closing pane wrapper is needed.
 
 with right:
-    st.markdown('<div class="pane"><div class="pane-scroll chat-shell">', unsafe_allow_html=True)
+    # Pane wrapper removed: Streamlit columns provide the layout.
     st.markdown('<div class="pane-title"><span>Conversation</span><span>Live</span></div>', unsafe_allow_html=True)
     semantic_context_on = st.toggle(
         "Semantic layer",
@@ -1071,7 +1007,6 @@ with right:
         key="workspace_chat",
     )
 
-    st.markdown('<div class="chat-scroll">', unsafe_allow_html=True)
     for message in st.session_state.messages:
         if message["role"] == "user":
             st.markdown(
@@ -1111,8 +1046,6 @@ with right:
                 df = message.get("df")
                 if df is not None:
                     st.dataframe(df, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     if st.session_state.pending_grounding is not None:
         pending = st.session_state.pending_grounding
         plan = pending["bundle"]["plan"]
@@ -1168,9 +1101,7 @@ with right:
             st.session_state.pending_grounding = None
             st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    # No HTML wrapper is kept open across Streamlit elements.
 
 if question:
     prior_history = list(st.session_state.messages)
