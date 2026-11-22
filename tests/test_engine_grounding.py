@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import duckdb
 import yaml
 
 from engine import AnalyticsEngine, ContextRouting, GroundingPlan
@@ -164,6 +165,28 @@ class GroundingFlowTests(unittest.TestCase):
         self.assertFalse(bundle["plan"]["is_answerable"])
         self.assertEqual(generate.call_count, 1)
         self.assertIn("CRM lead data", bundle["plan"]["decline_reason"])
+
+    def test_every_physical_column_has_effective_grain_metadata(self):
+        engine = self.make_engine()
+        con = duckdb.connect(str(BASE_DIR / "data" / "lakehouse.duckdb"), read_only=True)
+        try:
+            for table in engine.semantic_layer["tables"]:
+                columns = con.execute(
+                    f'DESCRIBE SELECT * FROM "{table["name"]}"'
+                ).fetchall()
+                catalog = engine.format_column_grain_catalog(table, columns)
+                self.assertEqual(len(catalog), len(columns))
+                for column in columns:
+                    expected = (
+                        table["name"] + "." + column[0] + " — "
+                        + table.get("column_grains", {}).get(
+                            column[0],
+                            table.get("default_column_grain", table["grain"]),
+                        )
+                    )
+                    self.assertIn(expected, catalog)
+        finally:
+            con.close()
 
 
 if __name__ == "__main__":

@@ -290,6 +290,28 @@ class AnalyticsEngine:
         )
         return f"{tables}\n\nCanonical join paths:\n{joins}"
 
+    def format_column_grain_catalog(
+        self,
+        table: dict[str, Any],
+        physical_columns: list[tuple[Any, ...]] | None = None,
+    ) -> list[str]:
+        table_name = table["name"]
+        default_grain = table.get("default_column_grain", table["grain"])
+        overrides = table.get("column_grains", {})
+        if physical_columns is None:
+            con = duckdb.connect(str(DB_PATH), read_only=True)
+            try:
+                physical_columns = con.execute(
+                    f"DESCRIBE SELECT * FROM {_quote_sql_identifier(table_name)}"
+                ).fetchall()
+            finally:
+                con.close()
+
+        return [
+            f"{table_name}.{column[0]} — {overrides.get(column[0], default_grain)}"
+            for column in physical_columns
+        ]
+
     def _selected_table_context(
         self, table_names: list[str]
     ) -> tuple[str, list[dict[str, Any]], set[str]]:
@@ -312,6 +334,7 @@ class AnalyticsEngine:
                 columns = con.execute(
                     f"DESCRIBE SELECT * FROM {_quote_sql_identifier(table_name)}"
                 ).fetchall()
+                column_grain_catalog = self.format_column_grain_catalog(table, columns)
                 allowed_columns.update(
                     f"{table_name}.{column[0]}" for column in columns
                 )
@@ -320,6 +343,7 @@ class AnalyticsEngine:
                     f"Aliases: {', '.join(table.get('aliases', [])) or 'None'}",
                     f"Grain: {table['grain']}",
                     f"Description: {table['description']}",
+                    "Column granularities:\n- " + "\n- ".join(column_grain_catalog),
                     "Semantic column descriptions:\n- "
                     + "\n- ".join(table.get("key_columns", [])),
                     "Physical columns and types:\n- "
@@ -1103,6 +1127,12 @@ Instructions:
 - {instruction}
 - Use only the finalized columns above; documented composite join keys may also be used
   for the supplied canonical joins. Do not invent columns or switch to unselected tables.
+- Respect each selected column's declared grain. Before counting or deduplicating rows,
+  use the complete primary/composite grain; do not count only po_release_number,
+  pack_slip, vendor_num, or another child identifier unless it is the actual requested grain.
+- For PO releases, count or SELECT DISTINCT complete release identities using
+  company + po_number + po_line + po_release_number. For receipts use
+  company + pack_slip + pack_line. Preserve snapshot_date for inventory snapshot grains.
 - For user-supplied string filters, use the canonical values listed in the data context. Match
   case-insensitively with LOWER(TRIM(column)) = LOWER(TRIM('user value')); use exact matching
   rather than wildcards unless the user asks for a partial match.

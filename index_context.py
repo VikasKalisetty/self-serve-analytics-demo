@@ -59,6 +59,23 @@ def get_categorical_value_context(
     )
 
 
+def get_column_grain_context(
+    con: duckdb.DuckDBPyConnection, table: dict
+) -> str:
+    table_name = table["name"]
+    table_sql = quote_identifier(table_name)
+    physical_columns = con.execute(
+        f"DESCRIBE SELECT * FROM {table_sql}"
+    ).fetchall()
+    default_grain = table.get("default_column_grain", table["grain"])
+    overrides = table.get("column_grains", {})
+    lines = [
+        f"- {table_name}.{column[0]} — {overrides.get(column[0], default_grain)}"
+        for column in physical_columns
+    ]
+    return "\nColumn granularities:\n" + "\n".join(lines)
+
+
 class GeminiEmbeddingFunction(EmbeddingFunction):
     """Custom ChromaDB embedding function using the official google-genai SDK."""
 
@@ -145,6 +162,7 @@ def main():
             f"Grain: {t['grain']}\n"
             f"Description: {t['description']}\n"
             f"Key Columns:\n- " + "\n- ".join(t["key_columns"])
+            + get_column_grain_context(catalog_con, t)
             + get_categorical_value_context(catalog_con, t)
         )
         sem_ids.append(f"TABLE-{t['name']}")

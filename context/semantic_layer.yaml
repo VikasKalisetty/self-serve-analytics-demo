@@ -27,12 +27,37 @@ global_rules:
       user-supplied string filters. Do not use fuzzy or wildcard matching unless the
       user explicitly asks for a partial match. Never apply this normalization to join
       keys: joins must use the exact composite-key equality conditions documented here.
+  - id: RULE-005
+    title: Row Granularity and Count Accuracy
+    description: >
+      Every fact or dimension column has an explicit effective grain. SELECT, DISTINCT,
+      COUNT, aggregation, deduplication, and grouping operations must respect that grain.
+      Do not count a child identifier by itself when multiple rows can share it. For
+      fct_purchase_orders, the release row grain is company + po_number + po_line +
+      po_release_number; open releases must retain all four key values or use
+      COUNT(DISTINCT CONCAT(company, '|', po_number, '|', po_line, '|', po_release_number)).
+      For fct_po_receipts use company + pack_slip + pack_line. For inventory use
+      company + part_num + warehouse_code + bin_num plus snapshot_date for historical data.
+      Dimension columns inherit their table grain unless column_grains declares a lower
+      or higher grain override. Never replace a table grain with only one identifier.
 
 tables:
   - name: fct_purchase_orders
     type: fact
     aliases: ["PO releases", "purchase order releases", "purchase order release"]
     grain: "One row per PO release (company + po_number + po_line + po_release_number)"
+    default_column_grain: "Company + po_number + po_line + po_release_number"
+    column_grains:
+      company: "Company"
+      po_number: "Company + po_number"
+      po_line: "Company + po_number + po_line"
+      po_release_number: "Company + po_number + po_line + po_release_number"
+      po_status: "Company + po_number"
+      order_date: "Company + po_number"
+      currency_code: "Company + po_number"
+      uom: "Company + po_number + po_line"
+      vendor_num: "Company + po_number"
+      buyer_id: "Company + po_number"
     description: "Captures purchase order details at the release level including ordered, received, and open quantities, unit price, extended price, and lateness flags."
     key_columns:
       - "company, po_number, po_line, po_release_number (Composite PK)"
@@ -47,6 +72,18 @@ tables:
     type: fact
     aliases: ["PO receipts", "goods receipts", "purchase receipts", "receipts"]
     grain: "One row per goods receipt packing slip line (company + pack_slip + pack_line)"
+    default_column_grain: "Company + pack_slip + pack_line"
+    column_grains:
+      company: "Company"
+      pack_slip: "Company + pack_slip"
+      pack_line: "Company + pack_slip + pack_line"
+      po_number: "Company + pack_slip + pack_line"
+      po_line: "Company + pack_slip + pack_line"
+      po_release_number: "Company + pack_slip + pack_line"
+      vendor_num: "Company + vendor_num"
+      part_num: "Company + part_num"
+      warehouse_code: "Company + warehouse_code"
+      bin_num: "Company + warehouse_code + bin_num"
     description: "Captures actual goods receipt transactions against POs, including accepted/rejected quantities, inspection outcomes, and early/late delivery days."
     key_columns:
       - "company, pack_slip, pack_line (Composite PK)"
@@ -60,6 +97,13 @@ tables:
     type: fact
     aliases: ["inventory positions", "inventory position", "inventory"]
     grain: "Periodic monthly snapshot per company + part_num + warehouse_code + bin_num + snapshot_date"
+    default_column_grain: "Company + part_num + warehouse_code + bin_num + snapshot_date"
+    column_grains:
+      company: "Company"
+      part_num: "Company + part_num"
+      warehouse_code: "Company + warehouse_code"
+      bin_num: "Company + warehouse_code + bin_num"
+      snapshot_date: "Company + part_num + warehouse_code + bin_num + snapshot_date"
     description: "Captures physical on-hand, available, allocated, reserved, inspection, hold, and in-transit inventory quantities, valuation, thresholds, and stock_status."
     key_columns:
       - "company, part_num, warehouse_code, bin_num, snapshot_date (Composite PK)"
@@ -73,6 +117,10 @@ tables:
     type: dimension
     aliases: ["PO headers", "purchase order headers", "purchase orders"]
     grain: "One row per PO header (company + po_number)"
+    default_column_grain: "Company + po_number"
+    column_grains:
+      company: "Company"
+      po_number: "Company + po_number"
     description: "Descriptive purchase order header attributes including PO type, payment/freight terms, shipping method, approval status, and buyer group."
     key_columns:
       - "company, po_number (Composite PK)"
@@ -84,6 +132,11 @@ tables:
     type: dimension
     aliases: ["employees", "employee", "buyers"]
     grain: "One row per employee (company + employee_num)"
+    default_column_grain: "Company + employee_num"
+    column_grains:
+      company: "Company"
+      employee_num: "Company + employee_num"
+      manager_id: "Company + manager_id"
     description: "Employee master data for buyers, approvers, warehouse managers, and inventory specialists."
     key_columns:
       - "company, employee_num (Composite PK)"
@@ -95,6 +148,25 @@ tables:
     type: dimension
     aliases: ["warehouse bins", "warehouse bin", "warehouses", "warehouse", "bins"]
     grain: "One row per warehouse bin (company + warehouse_code + bin_num)"
+    default_column_grain: "Company + warehouse_code + bin_num"
+    column_grains:
+      company: "Company"
+      warehouse_code: "Company + warehouse_code"
+      warehouse_name: "Company + warehouse_code"
+      warehouse_description: "Company + warehouse_code"
+      warehouse_type: "Company + warehouse_code"
+      warehouse_location: "Company + warehouse_code"
+      warehouse_city: "Company + warehouse_code"
+      warehouse_state: "Company + warehouse_code"
+      warehouse_country: "Company + warehouse_code"
+      bin_num: "Company + warehouse_code + bin_num"
+      bin_name: "Company + warehouse_code + bin_num"
+      bin_description: "Company + warehouse_code + bin_num"
+      bin_type: "Company + warehouse_code + bin_num"
+      bin_zone: "Company + warehouse_code + bin_num"
+      bin_aisle: "Company + warehouse_code + bin_num"
+      bin_rack: "Company + warehouse_code + bin_num"
+      bin_level: "Company + warehouse_code + bin_num"
     description: "Warehouse and bin attributes including warehouse type, location, bin zone, storage capacity, and nettable/receiving/shipping flags."
     key_columns:
       - "company, warehouse_code, bin_num (Composite PK)"
@@ -107,6 +179,10 @@ tables:
     type: dimension
     aliases: ["vendors", "vendor", "suppliers", "supplier"]
     grain: "One row per vendor (company + vendor_num)"
+    default_column_grain: "Company + vendor_num"
+    column_grains:
+      company: "Company"
+      vendor_num: "Company + vendor_num"
     description: "Supplier master data including vendor name, category, tier (Strategic/Preferred/Transactional), risk category, rating, and default lead time."
     key_columns:
       - "company, vendor_num (Composite PK)"
@@ -119,6 +195,10 @@ tables:
     type: dimension
     aliases: ["parts", "part", "materials", "material"]
     grain: "One row per part (company + part_num)"
+    default_column_grain: "Company + part_num"
+    column_grains:
+      company: "Company"
+      part_num: "Company + part_num"
     description: "Part and material master data including description, class, category, product group, standard/average cost, ABC classification, and criticality."
     key_columns:
       - "company, part_num (Composite PK)"
@@ -131,6 +211,11 @@ tables:
     type: dimension
     aliases: ["supplier price lists", "supplier price list", "supplier pricing", "contracted prices", "price lists"]
     grain: "One row per company + part_num + vendor_num"
+    default_column_grain: "Company + part_num + vendor_num"
+    column_grains:
+      company: "Company"
+      part_num: "Company + part_num"
+      vendor_num: "Company + vendor_num"
     description: "Supplier-specific contracted pricing, MOQ/order multiples, quoted lead times, price breaks, and primary/preferred supplier flags."
     key_columns:
       - "company, part_num, vendor_num (Composite PK)"
