@@ -30,7 +30,7 @@ st.markdown("""
 
 .block-container {
     max-width: 1800px;
-    padding: 0 12px 12px !important;
+    padding: 0 32px 12px !important;
     margin: 0 auto;
 }
 
@@ -39,7 +39,14 @@ st.markdown("""
 }
 
 [data-testid="stSidebar"] { display: none; }
-[data-testid="stHeader"] { height: 0; }
+[data-testid="stHeader"],
+[data-testid="stAppHeader"],
+[data-testid="stDecoration"] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
 [data-testid="stToolbar"] { display: none !important; }
 [data-testid="stAppViewBlockContainer"] {
     padding: 0 !important;
@@ -52,11 +59,115 @@ section.main,
 [data-testid="stAppViewContainer"] {
     padding-top: 0 !important;
     margin-top: 0 !important;
+    top: 0 !important;
+}
+section.main {
+    height: 100vh;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+[data-testid="stMainBlockContainer"],
+[data-testid="stVerticalBlock"],
+[data-testid="stVerticalBlockBorderWrapper"] {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+div[data-testid="column"] {
+    min-width: 0;
+}
+div[data-testid="stChatInput"] {
+    margin: 0;
 }
 [data-testid="stElementToolbar"],
 .stElementToolbar,
 [data-testid="stElementToolbarButton"] {
     display: none !important;
+}
+
+.decision-header {
+    height: 112px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 12px 0 4px;
+    background: white;
+}
+
+.decision-title {
+    color: #68227a;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 43px;
+    line-height: 0.95;
+    font-weight: 800;
+    letter-spacing: -1.8px;
+}
+
+.decision-underline {
+    width: 188px;
+    height: 7px;
+    margin-top: -2px;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            #68227a 0,
+            #68227a 10px,
+            transparent 10px,
+            transparent 13px
+        );
+    clip-path: polygon(0 35%, 100% 35%, 100% 65%, 0 65%);
+}
+
+.decision-subtitle {
+    color: #8b21ef;
+    font-size: 20px;
+    line-height: 1.15;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+[data-testid="stHorizontalBlock"] {
+    align-items: stretch;
+    height: calc(100vh - 112px);
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"] {
+    height: calc(100vh - 112px);
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1),
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(3) {
+    border: 1px solid #dfe5ef;
+    border-radius: 12px;
+    background: white;
+    padding: 0 10px 10px;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(2) {
+    border: 2px dashed #dfe5ef;
+    border-radius: 12px;
+    background: white;
+    padding: 0;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1)
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(3)
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid #dfe5ef;
+    border-radius: 12px;
+    background: white;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(2)
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 2px dashed #dfe5ef;
+    border-radius: 12px;
+    background: #fff;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    height: 100%;
 }
 
 .workspace-header {
@@ -231,11 +342,55 @@ section.main,
     border: 1px solid #d9e1ee;
     border-radius: 14px;
     background: white;
-    margin: .25rem 0 .55rem;
+    margin: 4px;
+    width: calc(100% - 8px);
 }
 
 [data-testid="stChatInput"] textarea {
     min-height: 48px;
+}
+
+.chat-message-padding-top {
+    height: 8px;
+}
+
+.chat-message-padding-bottom {
+    height: 12px;
+}
+
+div[data-testid="stColumn"] {
+    padding-left: 3px;
+    padding-right: 3px;
+}
+
+.conversation-window {
+    border: 1px solid #dfe5ef;
+    border-radius: 14px;
+    background: #ffffff;
+    height: calc(100vh - 112px);
+    min-height: 580px;
+    overflow: hidden;
+}
+
+.conversation-scroll {
+    height: calc(100vh - 245px);
+    min-height: 430px;
+    overflow-y: auto;
+    padding: 8px 6px 4px;
+}
+
+.conversation-controls {
+    border-top: 1px solid #eef1f6;
+    background: #ffffff;
+    padding: 8px 6px 6px;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    scroll-margin-top: 0;
+}
+
+[data-testid="stVerticalBlock"] [data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stMarkdownContainer"]) {
+    /* Native Streamlit containers retain their own rounded border. */
 }
 
 .stButton > button {
@@ -252,6 +407,38 @@ section.main,
 [data-testid="stDataFrame"] {
     border: 1px solid var(--line);
     border-radius: 10px;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 14px;
+    margin-bottom: 3px;
+}
+
+.stPopover > button,
+[data-testid="stPopover"] > button {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    border-radius: 50%;
+    padding: 0;
+    color: #667085;
+    border: 1px solid #dfe5ef;
+    background: #ffffff;
+    box-shadow: 0 3px 10px rgba(23,32,51,.08);
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] ::-webkit-scrollbar {
+    width: 8px;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
 }
 
 @media (max-width: 1000px) {
@@ -276,6 +463,10 @@ if "generated_datasets" not in st.session_state:
     st.session_state.generated_datasets = []
 if "active_dataset_id" not in st.session_state:
     st.session_state.active_dataset_id = None
+if "whiteboard_items" not in st.session_state:
+    st.session_state.whiteboard_items = []
+if "center_view_mode" not in st.session_state:
+    st.session_state.center_view_mode = "empty"
 if "semantic_context_on" not in st.session_state:
     st.session_state.semantic_context_on = True
 if "hitl_grounding_on" not in st.session_state:
@@ -919,189 +1110,328 @@ def render_canvas():
 # Streamlit columns own the three-panel layout. Avoid opening HTML divs in one
 # st.markdown call and closing them in another: Streamlit sanitizes each block
 # independently, which previously rendered empty fixed-height bordered boxes.
+st.markdown(
+    """
+    <div class="decision-header">
+        <div class="decision-title">DecisionIT</div>
+        <div class="decision-underline"></div>
+        <div class="decision-subtitle">Your Self-Serve Analytics Platform</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 left, center, right = st.columns([0.22, 0.50, 0.28], gap="small")
 
 with left:
-    # Pane wrapper removed: Streamlit columns provide the layout.
-    st.markdown('<div class="pane-title"><span>Datasets</span></div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="pane-title"><span>Datasets</span></div>', unsafe_allow_html=True)
 
-    datasets = st.session_state.generated_datasets
-    if not datasets:
-        st.info("Generated datasets will appear here.")
-    else:
-        for dataset in reversed(datasets):
-            active = dataset["id"] == st.session_state.active_dataset_id
-            card_class = "dataset-card active" if active else "dataset-card"
-            st.markdown(
-                f"""
-                <div class="{card_class}">
-                    <div class="dataset-title">{escape(dataset["title"])}</div>
-                    <div class="dataset-meta">{dataset["rows"]:,} rows · {dataset["columns"]} columns</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+        datasets = st.session_state.generated_datasets
+        if not datasets:
+            st.info("Generated datasets will appear here.")
+        else:
+            for dataset in reversed(datasets):
+                active = dataset["id"] == st.session_state.active_dataset_id
+                card_class = "dataset-card active" if active else "dataset-card"
+                st.markdown(
+                    f"""
+                    <div class="{card_class}">
+                        <div class="dataset-title">{escape(dataset["title"])}</div>
+                        <div class="dataset-meta">{dataset["rows"]:,} rows · {dataset["columns"]} columns</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "Open",
+                    key=f"open_dataset_{dataset['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state.active_dataset_id = dataset["id"]
+                    st.session_state.center_view_mode = "dataset"
+                    st.rerun()
+
+            active_dataset = next(
+                (
+                    item for item in datasets
+                    if item["id"] == st.session_state.active_dataset_id
+                ),
+                datasets[-1],
             )
-            if st.button(
-                "Open",
-                key=f"open_dataset_{dataset['id']}",
-                use_container_width=True,
-            ):
-                st.session_state.active_dataset_id = dataset["id"]
-                st.rerun()
+            st.session_state.active_dataset_id = active_dataset["id"]
 
-        active_dataset = next(
-            (
-                item for item in datasets
-                if item["id"] == st.session_state.active_dataset_id
-            ),
-            datasets[-1],
-        )
-        st.session_state.active_dataset_id = active_dataset["id"]
-
-        with st.expander("Dataset preview", expanded=False):
-            st.dataframe(active_dataset["df"].head(100), use_container_width=True)
-
-    # No closing pane wrapper is needed.
+            with st.expander("Dataset preview", expanded=False):
+                st.dataframe(active_dataset["df"].head(100), use_container_width=True)
 
 with center:
-    # Pane wrapper removed: Streamlit columns provide the layout.
-    st.markdown(
-        """
-        <div style="height:calc(100vh - 22px);display:flex;flex-direction:column;
-                    align-items:center;justify-content:flex-start;padding-top:38px;
-                    text-align:center;color:#667085;">
-            <div style="width:44px;height:44px;margin-bottom:10px;border-radius:12px;
-                        display:grid;place-items:center;background:#edf2ff;color:#315efb;
-                        border:1px solid #dbe5ff;font-size:18px;">◆</div>
-            <div style="color:#344054;font-size:15px;font-weight:800;margin-bottom:5px;">
-                Build your analysis
-            </div>
-            <div style="max-width:360px;font-size:12px;line-height:1.45;">
-                Select a generated dataset, choose a visual, and add it here.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    # No closing pane wrapper is needed.
-
-with right:
-    # Pane wrapper removed: Streamlit columns provide the layout.
-    st.markdown('<div class="pane-title"><span>Conversation</span><span>Live</span></div>', unsafe_allow_html=True)
-    semantic_context_on = st.toggle(
-        "Semantic layer",
-        value=st.session_state.semantic_context_on,
-        key="conversation_semantic_layer",
-    )
-    st.session_state.semantic_context_on = semantic_context_on
-    hitl_grounding_on = st.toggle(
-        "Confirm grounding",
-        value=st.session_state.hitl_grounding_on,
-        key="conversation_hitl_grounding",
-        help="Pause before SQL execution to review the grounded metric and table plan.",
-    )
-    st.session_state.hitl_grounding_on = hitl_grounding_on
-
-    question = st.chat_input(
-        "Ask about KPIs, tables, dimensions, or filters...",
-        key="workspace_chat",
-    )
-
-    for message in st.session_state.messages:
-        if message["role"] == "user":
+    if st.session_state.center_view_mode == "dataset" and st.session_state.active_dataset_id:
+        active_dataset = next(
+            (
+                item for item in st.session_state.generated_datasets
+                if item["id"] == st.session_state.active_dataset_id
+            ),
+            None,
+        )
+        if active_dataset:
             st.markdown(
-                f'<div class="chat-user">{escape(message["content"])}</div>',
+                f'<div class="pane-title"><span>{escape(active_dataset["title"])}</span>'
+                f'<span>{active_dataset["rows"]:,} rows</span></div>',
                 unsafe_allow_html=True,
             )
-        elif message.get("declined"):
-            st.markdown(
-                f'<div class="chat-assistant"><div class="chat-status">Guardrail</div>'
-                f'<div class="chat-message-summary">{escape(message["content"])}</div></div>',
-                unsafe_allow_html=True,
+            st.dataframe(
+                active_dataset["df"],
+                use_container_width=True,
+                height=560,
             )
-        else:
-            status = "Enterprise context" if message.get("context_on") else "Ungrounded schema"
-            summary = escape(message.get("summary", ""))
-            consideration_items = message.get("plan", {}).get("grounding_considerations", [])
-            grounding = ""
-            if consideration_items:
-                grounding_items = "".join(
-                    f"<li>{escape(str(item))}</li>" for item in consideration_items[:4]
+    elif st.session_state.center_view_mode == "whiteboard" and st.session_state.whiteboard_items:
+        st.markdown('<div class="pane-title"><span>Whiteboard</span></div>', unsafe_allow_html=True)
+
+        def render_whiteboard_item(index: int, item: dict):
+            width = item.get("width", "Full")
+            height = item.get("height", 280)
+            with st.container(border=True):
+                title_col, size_col = st.columns([0.68, 0.32])
+                with title_col:
+                    st.markdown(f"**{escape(item['title'])}**")
+                with size_col:
+                    with st.popover("ⓘ", help="Visual adjustments"):
+                        item["width"] = st.selectbox(
+                            "Width",
+                            ["Half", "Full"],
+                            index=0 if width == "Half" else 1,
+                            key=f"whiteboard_width_{item['id']}",
+                        )
+                        item["height"] = st.slider(
+                            "Visual height",
+                            min_value=220,
+                            max_value=600,
+                            value=height,
+                            step=20,
+                            key=f"whiteboard_height_{item['id']}",
+                        )
+                        if st.button(
+                            "Remove visual",
+                            key=f"remove_whiteboard_{index}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.whiteboard_items.pop(index)
+                            if not st.session_state.whiteboard_items:
+                                st.session_state.center_view_mode = "empty"
+                            st.rerun()
+                render_native_chart(
+                    item["df"],
+                    item["viz"],
+                    height=item["height"],
                 )
-                grounding = (
-                    '<div class="grounding-mini"><strong>Grounding</strong>'
-                    f"<ul>{grounding_items}</ul></div>"
-                )
+
+        index = 0
+        while index < len(st.session_state.whiteboard_items):
+            item = st.session_state.whiteboard_items[index]
+            if item.get("width", "Full") == "Half":
+                next_index = index + 1
+                if (
+                    next_index < len(st.session_state.whiteboard_items)
+                    and st.session_state.whiteboard_items[next_index].get("width", "Full") == "Half"
+                ):
+                    columns = st.columns(2)
+                    for column, (item_index, paired_item) in zip(
+                        columns,
+                        [
+                            (index, item),
+                            (
+                                next_index,
+                                st.session_state.whiteboard_items[next_index],
+                            ),
+                        ],
+                    ):
+                        with column:
+                            render_whiteboard_item(item_index, paired_item)
+                    index += 2
+                else:
+                    columns = st.columns([0.5, 0.5])
+                    with columns[0]:
+                        render_whiteboard_item(index, item)
+                    index += 1
+            else:
+                render_whiteboard_item(index, item)
+                index += 1
+    elif st.session_state.active_dataset_id:
+        active_dataset = next(
+            (
+                item for item in st.session_state.generated_datasets
+                if item["id"] == st.session_state.active_dataset_id
+            ),
+            None,
+        )
+        if active_dataset:
             st.markdown(
-                f'<div class="chat-assistant">'
-                f'<div class="chat-status">{status}</div>'
-                f'<div class="chat-message-summary">{summary}</div>'
-                f"{grounding}</div>",
+                f'<div class="pane-title"><span>{escape(active_dataset["title"])}</span>'
+                f'<span>{active_dataset["rows"]:,} rows</span></div>',
                 unsafe_allow_html=True,
             )
-            if message.get("df") is not None and not message["df"].empty:
-                render_native_chart(message["df"], message.get("viz", {}), height=230)
-            with st.expander("SQL & details"):
-                st.code(message.get("sql", ""), language="sql")
-                df = message.get("df")
-                if df is not None:
-                    st.dataframe(df, use_container_width=True)
-    if st.session_state.pending_grounding is not None:
-        pending = st.session_state.pending_grounding
-        plan = pending["bundle"]["plan"]
+            st.dataframe(
+                active_dataset["df"],
+                use_container_width=True,
+                height=560,
+            )
+    else:
         st.markdown(
-            '<div class="chat-assistant">'
-            '<div class="chat-status">Grounding verification</div>'
-            f'<strong>{escape(plan["metric_name"])}</strong>'
-            f'<div class="chat-message-summary">{escape(plan["business_definition"])}</div>'
-            "</div>",
+            """
+            <div style="height:calc(100vh - 142px);display:flex;flex-direction:column;
+                        align-items:center;justify-content:flex-start;padding-top:26px;
+                        text-align:center;color:#667085;">
+                <div style="width:44px;height:44px;margin-bottom:10px;border-radius:12px;
+                            display:grid;place-items:center;background:#edf2ff;color:#315efb;
+                            border:1px solid #dbe5ff;font-size:18px;">◆</div>
+                <div style="color:#344054;font-size:15px;font-weight:800;margin-bottom:5px;">
+                    Build your analysis
+                </div>
+                <div style="max-width:360px;font-size:12px;line-height:1.45;">
+                    Select a generated dataset, choose a visual, and add it here.
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        c1, c2 = st.columns(2)
-        confirm = c1.button("Confirm", type="primary", use_container_width=True)
-        cancel = c2.button("Cancel", use_container_width=True)
-        if confirm:
-            exec_res = engine.generate_and_execute_sql(
-                pending["question"], pending["bundle"]
-            )
-            if exec_res["success"]:
-                dataset_id = f"dataset_{len(st.session_state.generated_datasets) + 1}"
-                title = plan["metric_name"]
-                st.session_state.generated_datasets.append({
-                    "id": dataset_id,
-                    "title": title,
-                    "df": exec_res["df"].copy(),
-                    "rows": len(exec_res["df"]),
-                    "columns": len(exec_res["df"].columns),
-                    "sql": exec_res["sql"],
-                    "viz": exec_res["viz"],
-                    "cot": exec_res["chain_of_thought"],
-                })
-                st.session_state.active_dataset_id = dataset_id
-                st.session_state.messages.append({
-                    "id": len(st.session_state.messages),
-                    "role": "assistant",
-                    "context_on": pending["bundle"]["context_on"],
-                    "summary": exec_res["viz"]["executive_summary"],
-                    "df": exec_res["df"],
-                    "viz": exec_res["viz"],
-                    "sql": exec_res["sql"],
-                    "plan": plan,
-                })
-            else:
-                st.session_state.messages.append({
-                    "id": len(st.session_state.messages),
-                    "role": "assistant",
-                    "declined": True,
-                    "content": f"SQL execution failed after retries: `{exec_res['error']}`",
-                })
-            st.session_state.pending_grounding = None
-            st.rerun()
-        if cancel:
-            st.session_state.pending_grounding = None
-            st.rerun()
 
-    # No HTML wrapper is kept open across Streamlit elements.
+with right:
+    st.markdown('<div class="pane-title"><span>Conversation</span><span>Live</span></div>', unsafe_allow_html=True)
+    with st.container(height=650, border=True):
+        with st.container(height=430, border=False):
+            st.markdown('<div class="chat-message-padding-top"></div>', unsafe_allow_html=True)
+            for message in st.session_state.messages:
+                if message["role"] == "user":
+                    st.markdown(
+                        f'<div class="chat-user">{escape(message["content"])}</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif message.get("declined"):
+                    st.markdown(
+                        f'<div class="chat-assistant"><div class="chat-status">Guardrail</div>'
+                        f'<div class="chat-message-summary">{escape(message["content"])}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    status = "Enterprise context" if message.get("context_on") else "Ungrounded schema"
+                    summary = escape(message.get("summary", ""))
+                    consideration_items = message.get("plan", {}).get("grounding_considerations", [])
+                    grounding = ""
+                    if consideration_items:
+                        grounding_items = "".join(
+                            f"<li>{escape(str(item))}</li>" for item in consideration_items[:4]
+                        )
+                        grounding = (
+                            '<div class="grounding-mini"><strong>Grounding</strong>'
+                            f"<ul>{grounding_items}</ul></div>"
+                        )
+                    st.markdown(
+                        f'<div class="chat-assistant">'
+                        f'<div class="chat-status">{status}</div>'
+                        f'<div class="chat-message-summary">{summary}</div>'
+                        f"{grounding}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if message.get("df") is not None and not message["df"].empty:
+                        render_native_chart(message["df"], message.get("viz", {}), height=230)
+                        if st.button(
+                            "Add to whiteboard",
+                            key=f"add_message_visual_{message.get('id', len(st.session_state.messages))}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.whiteboard_items.append({
+                                "id": f"whiteboard_{len(st.session_state.whiteboard_items) + 1}",
+                                "title": message["plan"].get("metric_name", "Generated visual"),
+                                "df": message["df"].copy(),
+                                "viz": message["viz"].copy(),
+                                "width": "Full",
+                                "height": 280,
+                            })
+                            st.session_state.center_view_mode = "whiteboard"
+                            st.rerun()
+                    with st.expander("SQL & details"):
+                        st.code(message.get("sql", ""), language="sql")
+                        df = message.get("df")
+                        if df is not None:
+                            st.dataframe(df, use_container_width=True)
+            st.markdown('<div class="chat-message-padding-bottom"></div>', unsafe_allow_html=True)
+
+        if st.session_state.pending_grounding is not None:
+            pending = st.session_state.pending_grounding
+            plan = pending["bundle"]["plan"]
+            st.markdown(
+                '<div class="chat-assistant">'
+                '<div class="chat-status">Grounding verification</div>'
+                f'<strong>{escape(plan["metric_name"])}</strong>'
+                f'<div class="chat-message-summary">{escape(plan["business_definition"])}</div>'
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            c1, c2 = st.columns(2)
+            confirm = c1.button("Confirm", type="primary", use_container_width=True)
+            cancel = c2.button("Cancel", use_container_width=True)
+            if confirm:
+                exec_res = engine.generate_and_execute_sql(
+                    pending["question"], pending["bundle"]
+                )
+                if exec_res["success"]:
+                    dataset_id = f"dataset_{len(st.session_state.generated_datasets) + 1}"
+                    title = plan["metric_name"]
+                    st.session_state.generated_datasets.append({
+                        "id": dataset_id,
+                        "title": title,
+                        "df": exec_res["df"].copy(),
+                        "rows": len(exec_res["df"]),
+                        "columns": len(exec_res["df"].columns),
+                        "sql": exec_res["sql"],
+                        "viz": exec_res["viz"],
+                        "cot": exec_res["chain_of_thought"],
+                    })
+                    st.session_state.active_dataset_id = dataset_id
+                    st.session_state.messages.append({
+                        "id": len(st.session_state.messages),
+                        "role": "assistant",
+                        "context_on": pending["bundle"]["context_on"],
+                        "summary": exec_res["viz"]["executive_summary"],
+                        "df": exec_res["df"],
+                        "viz": exec_res["viz"],
+                        "sql": exec_res["sql"],
+                        "plan": plan,
+                    })
+                else:
+                    st.session_state.messages.append({
+                        "id": len(st.session_state.messages),
+                        "role": "assistant",
+                        "declined": True,
+                        "content": f"SQL execution failed after retries: `{exec_res['error']}`",
+                    })
+                st.session_state.pending_grounding = None
+                st.rerun()
+            if cancel:
+                st.session_state.pending_grounding = None
+                st.rerun()
+
+        toggles = st.columns(2)
+        with toggles[0]:
+            semantic_context_on = st.toggle(
+                "Semantic layer",
+                value=st.session_state.semantic_context_on,
+                key="conversation_semantic_layer",
+            )
+            st.session_state.semantic_context_on = semantic_context_on
+        with toggles[1]:
+            hitl_grounding_on = st.toggle(
+                "Confirm grounding",
+                value=st.session_state.hitl_grounding_on,
+                key="conversation_hitl_grounding",
+                help="Pause before SQL execution to review the grounded metric and table plan.",
+            )
+            st.session_state.hitl_grounding_on = hitl_grounding_on
+
+        question = st.chat_input(
+            "Ask about KPIs, tables, dimensions, or filters...",
+            key="workspace_chat",
+        )
 
 if question:
     prior_history = list(st.session_state.messages)
