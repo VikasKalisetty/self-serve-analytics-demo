@@ -333,7 +333,7 @@ complete, standalone analytics question.
             }
 
         sem_res = self.sem_col.query(query_texts=[question], n_results=7)
-        rules_res = self.sem_col.get(ids=["RULE-001", "RULE-002", "RULE-003"])
+        rules_res = self.sem_col.get(where={"doc_type": "rule"})
 
         sem_docs = []
         seen_ids = set()
@@ -479,6 +479,10 @@ User Question: "{resolved_q}"
 
 Instructions:
 - {instruction}
+- For user-supplied string filters, use the canonical values listed in the data context. Match
+  case-insensitively with LOWER(TRIM(column)) = LOWER(TRIM('user value')); use exact matching
+  rather than wildcards unless the user asks for a partial match.
+- Do not wrap or normalize columns in JOIN conditions. Preserve the documented composite-key joins.
 - Output ONLY a single valid DuckDB SELECT query (no markdown backticks, no comments at the end).
 - Round dollar amounts and percentages to 2 decimal places using ROUND(..., 2).
 - Limit output to at most 50 rows unless aggregating a small number of groups.

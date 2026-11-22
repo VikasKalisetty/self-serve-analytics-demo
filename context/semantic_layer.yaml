@@ -18,6 +18,15 @@ global_rules:
     description: >
       Generate valid DuckDB SQL. Use NULLIF(denom, 0) for all divisions to prevent
       divide-by-zero errors.
+  - id: RULE-004
+    title: Canonical Data Values and Case-Insensitive Filters
+    description: >
+      Treat categorical values in the data catalog as canonical values from the lakehouse.
+      Resolve user-provided values case-insensitively and use case-insensitive exact
+      comparisons, such as LOWER(TRIM(column)) = LOWER(TRIM('user value')), for
+      user-supplied string filters. Do not use fuzzy or wildcard matching unless the
+      user explicitly asks for a partial match. Never apply this normalization to join
+      keys: joins must use the exact composite-key equality conditions documented here.
 
 tables:
   - name: fct_purchase_orders
@@ -31,6 +40,7 @@ tables:
       - "order_quantity, received_quantity, open_quantity, unit_price, extended_price"
       - "release_status, po_status, is_open, is_closed, is_confirmed, is_late"
       - "days_to_due_date, days_past_due, lead_time_days"
+    categorical_columns: [company, po_status, release_status]
 
   - name: fct_po_receipts
     type: fact
@@ -42,6 +52,7 @@ tables:
       - "receipt_date, arrival_date, received_quantity, accepted_quantity, rejected_quantity"
       - "unit_cost, extended_cost, receipt_status"
       - "is_complete_receipt, is_partial_receipt, is_returned, days_early_late, inspection_required, inspection_status"
+    categorical_columns: [company, receipt_status, inspection_status]
 
   - name: fct_inventory_position
     type: fact
@@ -53,6 +64,7 @@ tables:
       - "inventory_value, average_unit_cost, days_of_inventory"
       - "minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
       - "stock_status (Overstock/Normal/Understock/Stockout), is_below_minimum, is_above_maximum"
+    categorical_columns: [company, stock_status]
 
   - name: dim_po
     type: dimension
@@ -62,6 +74,7 @@ tables:
       - "company, po_number (Composite PK)"
       - "vendor_num, buyer_id, order_date, po_status, po_type, terms_code, ship_via_code, freight_terms"
       - "approval_status, approved_by, approval_date, is_approved, is_open, is_closed, is_blanket_order, buyer_group"
+    categorical_columns: [company, approval_status, buyer_group, freight_terms, po_status, po_type, ship_to_city, ship_to_state, ship_via_code, terms_code]
 
   - name: dim_employee
     type: dimension
@@ -71,6 +84,7 @@ tables:
       - "company, employee_num (Composite PK)"
       - "employee_name, job_title, department, division, location, manager_id, manager_name"
       - "is_buyer, is_inventory_worker, is_warehouse_manager, is_approver"
+    categorical_columns: [company, department, division, employee_status, job_title, location]
 
   - name: dim_warehousebin
     type: dimension
@@ -81,6 +95,7 @@ tables:
       - "warehouse_name, warehouse_type, warehouse_city, warehouse_state"
       - "bin_name, bin_type, bin_zone, max_capacity, current_capacity, available_capacity"
       - "is_active, is_nettable, is_receiving_bin, is_shipping_bin, is_default_bin"
+    categorical_columns: [company, bin_name, bin_type, bin_zone, warehouse_city, warehouse_name, warehouse_state, warehouse_type]
 
   - name: dim_vendor
     type: dimension
@@ -91,6 +106,7 @@ tables:
       - "vendor_name, vendor_type, vendor_category, vendor_status, supplier_tier"
       - "is_preferred_supplier, is_strategic_supplier, is_approved_supplier"
       - "payment_terms, lead_time_days, supplier_rating, supplier_risk_category"
+    categorical_columns: [company, payment_terms, supplier_risk_category, supplier_tier, vendor_category, vendor_status, vendor_type]
 
   - name: dim_part
     type: dimension
@@ -101,6 +117,7 @@ tables:
       - "part_description, part_type, part_class, part_category, product_group, product_family"
       - "standard_cost, average_cost, minimum_stock_level, maximum_stock_level, reorder_point, safety_stock_quantity"
       - "abc_classification, criticality, default_lead_time_days"
+    categorical_columns: [company, abc_classification, criticality, part_category, part_class, part_type, product_family, product_group]
 
   - name: dim_supplier_price_list
     type: dimension
@@ -110,6 +127,7 @@ tables:
       - "company, part_num, vendor_num (Composite PK)"
       - "quoted_unit_price, minimum_price, maximum_price, discount_percentage, price_break_quantity"
       - "standard_lead_time_days, minimum_order_quantity, is_preferred_supplier, is_primary_supplier"
+    categorical_columns: [company]
 
 joins:
   - id: JOIN-01

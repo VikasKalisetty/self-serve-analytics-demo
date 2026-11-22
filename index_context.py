@@ -1,7 +1,9 @@
+import json
 import os
 from pathlib import Path
 
 import chromadb
+import duckdb
 import yaml
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from dotenv import load_dotenv
@@ -12,6 +14,49 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 CONTEXT_DIR = BASE_DIR / "context"
 CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
+DB_PATH = BASE_DIR / "data" / "lakehouse.duckdb"
+MAX_CATEGORICAL_VALUES = 30
+
+
+def quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def get_categorical_value_context(
+    con: duckdb.DuckDBPyConnection, table: dict
+) -> str:
+    table_name = table["name"]
+    table_sql = quote_identifier(table_name)
+    available_columns = {
+        row[0]
+        for row in con.execute(f"DESCRIBE SELECT * FROM {table_sql}").fetchall()
+    }
+
+    value_lines = []
+    for column in table.get("categorical_columns", []):
+        if column not in available_columns:
+            raise ValueError(f"{table_name}.{column} is not present in the lakehouse.")
+
+        column_sql = quote_identifier(column)
+        values = [
+            row[0]
+            for row in con.execute(
+                f"SELECT DISTINCT {column_sql} FROM {table_sql} "
+                f"WHERE {column_sql} IS NOT NULL ORDER BY {column_sql} "
+                f"LIMIT {MAX_CATEGORICAL_VALUES + 1}"
+            ).fetchall()
+        ]
+        if len(values) > MAX_CATEGORICAL_VALUES:
+            continue
+        if values:
+            value_lines.append(f"- {column}: {json.dumps(values, ensure_ascii=False)}")
+
+    if not value_lines:
+        return ""
+    return (
+        "\nCanonical categorical values from the current lakehouse data:\n"
+        + "\n".join(value_lines)
+    )
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
@@ -91,6 +136,7 @@ def main():
     # 2. Index Semantic Layer (Tables + Joins + Global Rules)
     sem_data = load_yaml("semantic_layer.yaml")
     sem_ids, sem_docs, sem_metas = [], [], []
+    catalog_con = duckdb.connect(str(DB_PATH), read_only=True)
 
     for t in sem_data["tables"]:
         doc_text = (
@@ -98,10 +144,13 @@ def main():
             f"Grain: {t['grain']}\n"
             f"Description: {t['description']}\n"
             f"Key Columns:\n- " + "\n- ".join(t["key_columns"])
+            + get_categorical_value_context(catalog_con, t)
         )
         sem_ids.append(f"TABLE-{t['name']}")
         sem_docs.append(doc_text)
         sem_metas.append({"doc_type": "table", "table_name": t["name"], "table_type": t["type"]})
+
+    catalog_con.close()
 
     for j in sem_data["joins"]:
         doc_text = (
@@ -124,7 +173,7 @@ def main():
         sem_metas.append({"doc_type": "rule", "title": r["title"]})
 
     sem_col.add(ids=sem_ids, documents=sem_docs, metadatas=sem_metas)
-    print(f"  [Indexed] semantic_layer  -> {len(sem_ids)} documents (9 tables, 10 joins, 3 global rules)")
+    print(f"  [Indexed] semantic_layer  -> {len(sem_ids)} documents (9 tables, 10 joins, 4 global rules)")
 
     # 3. Quick Retrieval Sanity Check
     test_query = "What is our Purchase Price Variance (PPV) by vendor tier?"
