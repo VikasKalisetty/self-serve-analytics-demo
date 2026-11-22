@@ -312,6 +312,138 @@ class AnalyticsEngine:
             for column in physical_columns
         ]
 
+    @staticmethod
+    def _entity_normalization_key(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+    def resolve_canonical_entities(
+        self, question: str
+    ) -> tuple[str, list[dict[str, str]], str]:
+        resolved_question = question
+        resolutions: list[dict[str, str]] = []
+        catalog_lines: list[str] = []
+        con = duckdb.connect(str(DB_PATH), read_only=True)
+        try:
+            table_definitions = {
+                table["name"]: table for table in self.semantic_layer["tables"]
+            }
+            candidates: list[tuple[str, str, str, str]] = []
+            for table_name, table in table_definitions.items():
+                for column in table.get("categorical_columns", []):
+                    available_columns = {
+                        row[0] for row in con.execute(
+                            f"DESCRIBE SELECT * FROM {_quote_sql_identifier(table_name)}"
+                        ).fetchall()
+                    }
+                    if column not in available_columns:
+                        continue
+                    values = [
+                        row[0] for row in con.execute(
+                            f"SELECT DISTINCT {_quote_sql_identifier(column)} "
+                            f"FROM {_quote_sql_identifier(table_name)} "
+                            f"WHERE {_quote_sql_identifier(column)} IS NOT NULL "
+                            f"ORDER BY {_quote_sql_identifier(column)}"
+                        ).fetchall()
+                    ]
+                    if len(values) > 500:
+                        continue
+                    for value in values:
+                        canonical = str(value).strip()
+                        aliases = {
+                            canonical,
+                            canonical.replace("_", " ").replace("-", " "),
+                            re.sub(r"(?<=[A-Za-z])(?=[0-9])", " ", canonical),
+                        }
+                        split_code = re.match(r"^([A-Za-z]+)[-_\s]*(\d+)$", canonical)
+                        if split_code:
+                            prefix, suffix = split_code.groups()
+                            aliases.update({
+                                f"{prefix} {suffix}",
+                                f"{prefix}-{suffix}",
+                                f"{column} {suffix}",
+                                f"{table_name} {suffix}",
+                            })
+                            if column in {"company", "vendor_num", "warehouse_code", "bin_num", "part_num"}:
+                                aliases.update({
+                                    f"company {suffix}",
+                                    f"co {suffix}",
+                                })
+                        for alias in sorted(aliases, key=len, reverse=True):
+                            if alias.strip():
+                                candidates.append((
+                                    table_name,
+                                    column,
+                                    alias.strip(),
+                                    canonical,
+                                ))
+                    catalog_lines.append(
+                        f"- {table_name}.{column}: "
+                        + ", ".join(str(value) for value in values)
+                    )
+        finally:
+            con.close()
+
+        for table_name, column, alias, canonical in sorted(
+            candidates,
+            key=lambda candidate: len(candidate[2]),
+            reverse=True,
+        ):
+            if alias.casefold() == canonical.casefold():
+                pattern = re.compile(
+                    rf"(?<![A-Za-z0-9]){re.escape(alias)}(?![A-Za-z0-9])",
+                    re.IGNORECASE,
+                )
+            else:
+                pattern = re.compile(
+                    rf"(?<![A-Za-z0-9]){re.escape(alias)}(?![A-Za-z0-9])",
+                    re.IGNORECASE,
+                )
+            matches = list(pattern.finditer(resolved_question))
+            if not matches:
+                continue
+            existing = next(
+                (
+                    item for item in resolutions
+                    if item["table"] == table_name
+                    and item["column"] == column
+                    and item["canonical"] == canonical
+                ),
+                None,
+            )
+            for match in reversed(matches):
+                original = match.group(0)
+                resolved_question = (
+                    resolved_question[:match.start()]
+                    + canonical
+                    + resolved_question[match.end():]
+                )
+                if existing is None:
+                    resolutions.append({
+                        "table": table_name,
+                        "column": column,
+                        "original": original,
+                        "canonical": canonical,
+                    })
+                    existing = resolutions[-1]
+
+        resolution_text = (
+            "\n".join(
+                f"- {item['table']}.{item['column']}: "
+                f"{item['original']} -> {item['canonical']}"
+                for item in resolutions
+            )
+            or "No prompt entities required canonicalization."
+        )
+        catalog_text = (
+            "\n".join(catalog_lines)
+            or "No categorical value ranges were available."
+        )
+        return resolved_question, resolutions, (
+            "Canonical entity range catalog:\n"
+            + catalog_text
+            + "\n\nDeterministic entity resolutions:\n"
+            + resolution_text
+        )
     def _selected_table_context(
         self, table_names: list[str]
     ) -> tuple[str, list[dict[str, Any]], set[str]]:
@@ -805,6 +937,16 @@ complete, standalone analytics question.
 
         rewritten = self.rewrite_question(question, chat_history or [])
         resolved_q = rewritten.standalone_question
+        entity_resolutions: list[dict[str, str]] = []
+        entity_context = ""
+        if context_on:
+            resolved_q, entity_resolutions, entity_context = (
+                self.resolve_canonical_entities(resolved_q)
+            )
+            rewritten = RewrittenQuery(
+                is_followup=rewritten.is_followup,
+                standalone_question=resolved_q,
+            )
 
         if context_on:
             retrieved = self.retrieve_context(resolved_q)
@@ -844,6 +986,9 @@ Required tables for exact KPI: {exact_required_tables or 'none'}
 
 --- SEMANTIC TABLE CATALOG (DESCRIPTIONS ONLY; NO PHYSICAL COLUMNS YET) ---
 {catalog}
+
+--- CANONICAL ENTITY RESOLUTION ---
+{entity_context}
 """
             routing = self._generate_structured_response(
                 routing_prompt, ContextRouting, temperature=0.0
@@ -913,6 +1058,7 @@ Required tables for exact KPI: {exact_required_tables or 'none'}
                 }
                 retrieved["kpis"] = selected_kpis
                 retrieved["routing"] = routing
+                retrieved["entity_resolutions"] = entity_resolutions
                 return {
                     "plan": plan,
                     "retrieved": retrieved,
@@ -927,6 +1073,7 @@ Required tables for exact KPI: {exact_required_tables or 'none'}
             retrieved["kpis"] = selected_kpis
             retrieved["semantic"] = semantic_docs
             retrieved["routing"] = routing
+            retrieved["entity_resolutions"] = entity_resolutions
             kpi_block = "\n\n".join(kpi["content"] for kpi in selected_kpis)
             kpi_selection = _kpi_selection_instruction(resolved_q, retrieved)
             if exact_kpi:
@@ -961,6 +1108,9 @@ Question: "{resolved_q}"
 --- TABLE ROUTING DECISION ---
 {routing["selection_reason"]}
 Use only these selected tables: {selected_table_names}
+
+--- CANONICAL ENTITY RESOLUTION ---
+{entity_context}
 
 --- SELECTED TABLE DESCRIPTIONS, PHYSICAL COLUMNS, DATA VALUES, JOINS, AND RULES ---
 {semantic_context}
@@ -1026,6 +1176,15 @@ Return tables_to_use from the selected table list only.
                     + ", ".join(sorted(invalid_selected_tables))
                     + "."
                 )
+            if entity_resolutions:
+                deterministic_considerations.append(
+                    "Canonical entities: "
+                    + "; ".join(
+                        f"{item['table']}.{item['column']} "
+                        f"{item['original']} -> {item['canonical']}"
+                        for item in entity_resolutions
+                    )
+                )
             plan["grounding_considerations"] = list(dict.fromkeys([
                 *deterministic_considerations,
                 *plan["grounding_considerations"],
@@ -1076,10 +1235,22 @@ Explain your table and column choices in grounding_considerations.
         if context_on:
             kpi_block = "\n\n".join(k["content"] for k in retrieved["kpis"])
             sem_block = "\n\n".join(s["content"] for s in retrieved["semantic"])
+            entity_resolutions = retrieved.get("entity_resolutions", [])
+            entity_resolution_block = (
+                "\n".join(
+                    f"- {item['table']}.{item['column']}: "
+                    f"{item['original']} -> {item['canonical']}"
+                    for item in entity_resolutions
+                )
+                or "No prompt entities required canonicalization."
+            )
             kpi_selection = _kpi_selection_instruction(resolved_q, retrieved)
             context_section = f"""
 --- KPI SELECTION GUARDRAIL ---
 {kpi_selection}
+
+--- CANONICAL ENTITY RESOLUTIONS ---
+{entity_resolution_block}
 
 --- KPI CONTEXT (EXACT MATCH OR REFERENCE ONLY AS INDICATED ABOVE) ---
 {kpi_block}
@@ -1125,6 +1296,8 @@ User Question: "{resolved_q}"
 
 Instructions:
 - {instruction}
+- If canonical entity resolutions are supplied, use the canonical value exactly in filters
+  and grouping; do not preserve the user's spoken alias or guess a nearby value.
 - Use only the finalized columns above; documented composite join keys may also be used
   for the supplied canonical joins. Do not invent columns or switch to unselected tables.
 - Respect each selected column's declared grain. Before counting or deduplicating rows,

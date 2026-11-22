@@ -40,6 +40,15 @@ global_rules:
       company + part_num + warehouse_code + bin_num plus snapshot_date for historical data.
       Dimension columns inherit their table grain unless column_grains declares a lower
       or higher grain override. Never replace a table grain with only one identifier.
+  - id: RULE-006
+    title: Canonical Entity Value Resolution
+    description: >
+      Before generating filters or grouping values, resolve entity text from the user's
+      prompt against the canonical categorical values from the lakehouse. Replace spoken,
+      spaced, abbreviated, or case-varied forms with the exact stored value. For example,
+      company 01, company COMP 01, Comp 01, and comp-01 resolve to COMP01 when that is
+      present in the data. Use the resolved exact value for string filtering, while
+      retaining LOWER(TRIM(column)) for case-insensitive comparisons where appropriate.
 
 tables:
   - name: fct_purchase_orders

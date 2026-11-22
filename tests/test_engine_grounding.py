@@ -188,6 +188,24 @@ class GroundingFlowTests(unittest.TestCase):
         finally:
             con.close()
 
+    def test_company_spoken_forms_resolve_to_canonical_company_value(self):
+        engine = self.make_engine()
+        for prompt in [
+            "open releases for company 01",
+            "open releases for Comp 01",
+            "open releases for company COMP01",
+            "open releases for COMP 01",
+        ]:
+            resolved, resolutions, context = engine.resolve_canonical_entities(prompt)
+            company_resolution = [
+                item for item in resolutions
+                if item["table"] == "fct_purchase_orders"
+                and item["column"] == "company"
+                and item["canonical"] == "COMP01"
+            ]
+            self.assertTrue(company_resolution, resolved)
+            self.assertIn("COMP01", resolved)
+
 
 if __name__ == "__main__":
     unittest.main()
