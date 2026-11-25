@@ -21,11 +21,19 @@ st.markdown("""
 :root {
     --ink: #172033;
     --muted: #667085;
-    --line: #e7ecf3;
-    --blue: #315efb;
-    --blue-soft: #edf2ff;
+    --line: #e9e3f2;
+    --blue: #7650b8;
+    --blue-soft: #f2ecfb;
     --green: #12a36d;
     --panel: #ffffff;
+}
+
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #f1eafb 0%, #faf8fd 46%, #ffffff 100%);
+}
+
+section.main {
+    background: transparent;
 }
 
 .block-container {
@@ -91,11 +99,11 @@ div[data-testid="stChatInput"] {
     flex-direction: column;
     justify-content: flex-start;
     padding: 12px 0 4px;
-    background: white;
+    background: transparent;
 }
 
 .decision-title {
-    color: #68227a;
+    color: #5d3785;
     font-family: Georgia, "Times New Roman", serif;
     font-size: 43px;
     line-height: 0.95;
@@ -103,24 +111,9 @@ div[data-testid="stChatInput"] {
     letter-spacing: -1.8px;
 }
 
-.decision-underline {
-    width: 188px;
-    height: 7px;
-    margin-top: -2px;
-    background:
-        repeating-linear-gradient(
-            90deg,
-            #68227a 0,
-            #68227a 10px,
-            transparent 10px,
-            transparent 13px
-        );
-    clip-path: polygon(0 35%, 100% 35%, 100% 65%, 0 65%);
-}
-
 .decision-subtitle {
-    color: #8b21ef;
-    font-size: 20px;
+    color: #70558b;
+    font-size: 13px;
     line-height: 1.15;
     margin-top: 5px;
     font-weight: 500;
@@ -137,21 +130,30 @@ div[data-testid="stChatInput"] {
 
 [data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1),
 [data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(3) {
-    border: 1px solid #dfe5ef;
+    border: 1px solid rgba(218, 207, 232, .9);
     border-radius: 12px;
-    background: white;
+    background: rgba(255, 255, 255, .86);
     padding: 0 10px 10px;
 }
 
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1) {
+    background: linear-gradient(180deg, rgba(247, 241, 253, .98), rgba(255, 255, 255, .94));
+}
+
 [data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(2) {
-    border: 2px dashed #dfe5ef;
+    border: 1px solid rgba(218, 207, 232, .9);
     border-radius: 12px;
-    background: white;
-    padding: 0;
+    background: rgba(255, 255, 255, .55);
+    padding: 8px;
 }
 
 [data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1)
-[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid #e5d9f0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #faf6fd, #ffffff 78%);
+}
+
 [data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(3)
 [data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid #dfe5ef;
@@ -225,6 +227,13 @@ div[data-testid="stChatInput"] {
     letter-spacing: .04em;
     text-transform: uppercase;
     padding: .05rem .1rem .55rem;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1)
+[data-testid="stAlert"] {
+    color: #654487;
+    background: #f6f0fb;
+    border-color: #e7d9f2;
 }
 
 .dataset-card {
@@ -366,10 +375,144 @@ div[data-testid="stColumn"] {
 .conversation-window {
     border: 1px solid #dfe5ef;
     border-radius: 14px;
-    background: #ffffff;
+    background: rgba(255, 255, 255, .92);
     height: calc(100vh - 112px);
     min-height: 580px;
     overflow: hidden;
+}
+
+[data-testid="stPlotlyChart"] .modebar-container {
+    top: 2px !important;
+    right: 2px !important;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"]:has([class*="st-key-whiteboard_visual_"]) {
+    position: relative;
+}
+
+[class*="st-key-whiteboard_settings_"] {
+    position: absolute !important;
+    top: 2px;
+    right: 2px;
+    z-index: 5;
+}
+
+.workflow-card {
+    border: 1px solid rgba(218, 207, 232, .9);
+    border-radius: 13px;
+    background: linear-gradient(135deg, rgba(247, 241, 253, .96), rgba(255, 255, 255, .96));
+    padding: 9px 12px;
+    margin: 0 0 8px;
+    box-shadow: 0 5px 16px rgba(72, 47, 105, .05);
+}
+
+.workflow-card-left {
+    margin-top: auto;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1)
+[data-testid="stVerticalBlock"]:has(.workflow-card-left) {
+    height: 100%;
+}
+
+[data-testid="stHorizontalBlock"] [data-testid="column"]:nth-child(1)
+[data-testid="stElementContainer"]:has(.workflow-card-left) {
+    margin-top: auto;
+}
+
+.workflow-label {
+    color: #88749e;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    margin-bottom: 5px;
+}
+
+.workflow-node {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    border: 1px solid #e8def2;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .9);
+    padding: 5px 8px;
+    color: #49365e;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 1.2;
+}
+
+.workflow-node span {
+    color: #80748d;
+    font-size: 9px;
+    font-weight: 500;
+    text-align: left;
+}
+
+.workflow-node.platform {
+    color: #fff;
+    border-color: #7650a8;
+    background: linear-gradient(100deg, #68428f, #8b68b2);
+}
+
+.workflow-node.platform span {
+    color: #eee5f7;
+}
+
+.workflow-connector {
+    height: 9px;
+    width: 1px;
+    margin: 0 auto;
+    background: #b7a3ca;
+    position: relative;
+}
+
+.workflow-connector::after {
+    content: "";
+    position: absolute;
+    left: -3px;
+    bottom: 0;
+    width: 5px;
+    height: 5px;
+    border-right: 1px solid #9a80b5;
+    border-bottom: 1px solid #9a80b5;
+    transform: rotate(45deg);
+}
+
+.build-empty-state {
+    height: calc(100vh - 176px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 26px 14px 0;
+    margin: 0 8px;
+    text-align: center;
+    color: #746582;
+    background: linear-gradient(145deg, rgba(247, 241, 253, .86), rgba(255, 255, 255, .74));
+    border: 1px solid rgba(229, 216, 241, .9);
+    border-radius: 16px;
+}
+
+.build-empty-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: #eee3f8;
+    color: #7650a8;
+    border: 1px solid #e1d1f0;
+    font-size: 18px;
+}
+
+.build-empty-title {
+    color: #654487;
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 5px;
 }
 
 .conversation-scroll {
@@ -1114,8 +1257,7 @@ st.markdown(
     """
     <div class="decision-header">
         <div class="decision-title">DecisionIT</div>
-        <div class="decision-underline"></div>
-        <div class="decision-subtitle">Your Self-Serve Analytics Platform</div>
+        <div class="decision-subtitle">Ask in plain language. DecisionIT uses your semantic layer to query trusted lakehouse data.</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1124,9 +1266,8 @@ st.markdown(
 left, center, right = st.columns([0.22, 0.50, 0.28], gap="small")
 
 with left:
-    with st.container(border=True):
-        st.markdown('<div class="pane-title"><span>Datasets</span></div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="pane-title"><span>Datasets</span></div>', unsafe_allow_html=True)
+    with st.container(height=500, border=True, key="datasets_pane"):
         datasets = st.session_state.generated_datasets
         if not datasets:
             st.info("Generated datasets will appear here.")
@@ -1164,6 +1305,20 @@ with left:
             with st.expander("Dataset preview", expanded=False):
                 st.dataframe(active_dataset["df"].head(100), use_container_width=True)
 
+    st.markdown(
+        """
+        <div class="workflow-card workflow-card-left" aria-label="How DecisionIT works">
+            <div class="workflow-label">HOW IT WORKS</div>
+            <div class="workflow-node platform">DecisionIT platform<span>Answers your question</span></div>
+            <div class="workflow-connector"></div>
+            <div class="workflow-node">Semantic layer<span>Connects business meaning</span></div>
+            <div class="workflow-connector"></div>
+            <div class="workflow-node">Data lakehouse<span>Provides trusted data</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 with center:
     if st.session_state.center_view_mode == "dataset" and st.session_state.active_dataset_id:
         active_dataset = next(
@@ -1190,35 +1345,36 @@ with center:
         def render_whiteboard_item(index: int, item: dict):
             width = item.get("width", "Full")
             height = item.get("height", 280)
-            with st.container(border=True):
-                title_col, size_col = st.columns([0.68, 0.32])
-                with title_col:
-                    st.markdown(f"**{escape(item['title'])}**")
-                with size_col:
-                    with st.popover("ⓘ", help="Visual adjustments"):
-                        item["width"] = st.selectbox(
-                            "Width",
-                            ["Half", "Full"],
-                            index=0 if width == "Half" else 1,
-                            key=f"whiteboard_width_{item['id']}",
-                        )
-                        item["height"] = st.slider(
-                            "Visual height",
-                            min_value=220,
-                            max_value=600,
-                            value=height,
-                            step=20,
-                            key=f"whiteboard_height_{item['id']}",
-                        )
-                        if st.button(
-                            "Remove visual",
-                            key=f"remove_whiteboard_{index}",
-                            use_container_width=True,
-                        ):
-                            st.session_state.whiteboard_items.pop(index)
-                            if not st.session_state.whiteboard_items:
-                                st.session_state.center_view_mode = "empty"
-                            st.rerun()
+            with st.container(border=True, key=f"whiteboard_visual_{item['id']}"):
+                st.markdown(f"**{escape(item['title'])}**")
+                with st.popover(
+                    "ⓘ",
+                    help="Visual adjustments",
+                    key=f"whiteboard_settings_{item['id']}",
+                ):
+                    item["width"] = st.selectbox(
+                        "Width",
+                        ["Half", "Full"],
+                        index=0 if width == "Half" else 1,
+                        key=f"whiteboard_width_{item['id']}",
+                    )
+                    item["height"] = st.slider(
+                        "Visual height",
+                        min_value=220,
+                        max_value=600,
+                        value=height,
+                        step=20,
+                        key=f"whiteboard_height_{item['id']}",
+                    )
+                    if st.button(
+                        "Remove visual",
+                        key=f"remove_whiteboard_{index}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.whiteboard_items.pop(index)
+                        if not st.session_state.whiteboard_items:
+                            st.session_state.center_view_mode = "empty"
+                        st.rerun()
                 render_native_chart(
                     item["df"],
                     item["viz"],
@@ -1276,17 +1432,12 @@ with center:
                 height=560,
             )
     else:
+        st.markdown('<div class="pane-title"><span>Whiteboard</span></div>', unsafe_allow_html=True)
         st.markdown(
             """
-            <div style="height:calc(100vh - 142px);display:flex;flex-direction:column;
-                        align-items:center;justify-content:flex-start;padding-top:26px;
-                        text-align:center;color:#667085;">
-                <div style="width:44px;height:44px;margin-bottom:10px;border-radius:12px;
-                            display:grid;place-items:center;background:#edf2ff;color:#315efb;
-                            border:1px solid #dbe5ff;font-size:18px;">◆</div>
-                <div style="color:#344054;font-size:15px;font-weight:800;margin-bottom:5px;">
-                    Build your analysis
-                </div>
+            <div class="build-empty-state">
+                <div class="build-empty-icon">◆</div>
+                <div class="build-empty-title">Build your analysis</div>
                 <div style="max-width:360px;font-size:12px;line-height:1.45;">
                     Select a generated dataset, choose a visual, and add it here.
                 </div>
